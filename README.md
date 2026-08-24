@@ -182,6 +182,9 @@ A 44 frame shot therefore runs 1001–1064:
 | `first_frame` | work-range head; convention is `1001` (10 head + 10 tail handles) |
 | `file_extension` | drives the `extension` and `example_filename` outputs |
 | `strict` | on = abort on any violation; off = auto-correct and warn |
+| `schema` | which JSON schema in `schemas/` to render |
+| `template_override` | override the schema's template for this node only |
+| `custom_tokens` | extra `name=value` tokens available to the template |
 
 ### Outputs
 
@@ -199,6 +202,81 @@ A 44 frame shot therefore runs 1001–1064:
 Wire `filename_prefix` into the saver's `filename_prefix` widget (convert it to
 an input first: right-click the Save node → *Convert widget to input*, or drag
 from this node's output onto the widget in recent frontends).
+
+## Schemas — the convention is configuration
+
+No naming rule is hardcoded in the logic. Which tokens exist, how each one is
+cased, padded and validated, the delimiters, the order of the tokens and how
+many folder levels they render into all live in JSON under [`schemas/`](schemas).
+`naming_schema.py` is only the engine that loads and renders them.
+
+Pick one with the `schema` widget. Four ship with the node:
+
+| Schema | Renders |
+|---|---|
+| `vfx_default` | `SHW_SEQ_0010_comp_vnd_v001/SHW_SEQ_0010_comp_vnd_v001` |
+| `vfx_flat` | `SHW_SEQ_0010_comp_vnd_v001` (no sequence folder) |
+| `studio_nested` | `SHW/SEQ/0010/comp-vnd/v001-0010-comp-vnd` |
+| `episodic_dotted` | `SHW/ep101/SEQ.0010/SHW.SEQ.0010.comp.vp.v001` |
+
+### Writing your own
+
+Drop a JSON file in `schemas/` and it appears in the dropdown after a restart:
+
+```json
+{
+  "label": "My studio",
+  "tokens": {
+    "show":    {"label": "Show code", "charset": "alpha", "case": "upper", "length": 4},
+    "shot":    {"label": "Shot", "type": "int", "pad": 3},
+    "version": {"label": "Version", "type": "int", "pad": 2, "prefix": "V"}
+  },
+  "folders": ["{show}", "{seq}"],
+  "file": "{show}-{shot}[-{vendor}]-{version}",
+  "filename": "{basename}.{frame}.{ext}",
+  "rules": [
+    {"when": {"token": "task", "matches": "(mp|bg|fg|el|cp|rp)\\d*"},
+     "omit": ["vendor"], "note": "Lab plates carry no vendor id"}
+  ]
+}
+```
+
+**Token specs** — `charset` (`alpha` / `alnum` / `any`), `case` (`upper` /
+`lower`), `length` for an exact character count, `type: "int"` with `pad`,
+`prefix` (the `v` in `v001`), `pattern` for an extra regex check, and
+`optional: true` to allow it to be empty.
+
+**Templates** — `folders` is a list of path levels (any depth), `file` is the
+basename, `filename` is the full name used for the `example_filename` output.
+
+| Syntax | Meaning |
+|---|---|
+| `{token}` | substitute a token |
+| `{token:upper}` | modifiers: `upper`, `lower`, or a pad width like `04` |
+| `[ ... ]` | optional group — dropped whole when every token inside is empty, which is how a component *and its delimiter* disappear together |
+| `/` | folder separator, any number of levels |
+| anything else | a literal, so delimiters are whatever you type |
+
+**Rules** drop tokens that cannot coexist. The shipped rule is the lab-plate
+one: when `task` matches a plate type, `vendor` is omitted along with its
+delimiter.
+
+### Per-node overrides
+
+`template_override` replaces the schema's templates for one node — handy for a
+one-off without writing a file:
+
+```
+{show}/{seq}/{shot}/{task}/{show}_{shot}_{version}
+```
+
+`custom_tokens` adds tokens the widgets do not cover, one `name=value` per
+line, referenced as `{episode}`:
+
+```
+episode=101
+artist=vp
+```
 
 ## Important: what ComfyUI appends
 
@@ -277,5 +355,9 @@ JavaScript is cached.
 
 Naming convention and node by **Victor Perez**, Visual Effects Supervisor —
 [victorperez.online](https://victorperez.online)
+
+The schema-driven design — keeping the configuration separate from the logic,
+so studios can vary nesting depth, delimiters and token order — was suggested
+by **Sam Hodge**.
 
 Released under the [MIT License](LICENSE).

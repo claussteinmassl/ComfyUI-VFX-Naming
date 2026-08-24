@@ -1,22 +1,32 @@
 """
 VFX Naming Convention node for ComfyUI.
 
-Builds a filename_prefix string that follows the standard VFX plate/shot naming
-convention:
+Builds a filename_prefix that follows a VFX shot/plate naming convention. The
+convention itself is *configuration*, not code: which tokens exist, how each is
+formatted and validated, the delimiters, the token order and the number of
+folder levels all live in JSON under `schemas/`. This module supplies the
+values and renders the selected schema - see `naming_schema.py` for the engine.
+
+Default schema:
 
     <SHOW>_<SEQ>_<SHOT>_<TASK>_<VENDOR>_v<VERSION>.<FRAME>.<EXT>
     AAA_AAA_####_aaaa_aaa_v###.####.aaa
-
-Image sequences live in a folder named after the file basename, e.g.
-
-    SHW_SEQ_0010_comp_vnd_v001/
-        SHW_SEQ_0010_comp_vnd_v001.1001.exr
-        SHW_SEQ_0010_comp_vnd_v001.1002.exr
 
 Reference: "VFX Naming Convention" paper by Victor Perez, VFX Supervisor.
 """
 
 import re
+
+from .naming_schema import (
+    NamingError,
+    load_schema,
+    parse_custom_tokens,
+    render,
+    schema_names,
+)
+
+# Kept as an alias so existing imports and error handling keep working.
+VFXNamingError = NamingError
 
 # --- Task vocabularies -------------------------------------------------------
 
@@ -53,73 +63,40 @@ EXTENSIONS = [
     "mov", "mp4", "mxf", "cube", "cdl",
 ]
 
-PLATE_RE = re.compile(r"^(mp|bg|fg|el|cp|rp)(\d{1,2})?$")
-
-
-class VFXNamingError(ValueError):
-    """Raised when strict validation rejects a component."""
-
-
-# --- Helpers -----------------------------------------------------------------
 
 def _fail(message, strict, warnings):
     if strict:
-        raise VFXNamingError(message)
+        raise NamingError(message)
     warnings.append(message)
 
 
-def _alpha_code(value, length, upper, label, strict, warnings):
-    """Validate/normalise an alphabetic component such as SHOW or SEQUENCE."""
-    raw = (value or "").strip()
-    cleaned = re.sub(r"[^A-Za-z]", "", raw)
+def _resolve_task(schema, preset, custom, plate_layer, strict, warnings):
+    """Return (task_string, is_plate) using the schema's task rules."""
+    rules = schema.task_rules or {}
+    final_task = rules.get("final", FINAL_TASK)
+    plate_re = re.compile(f"^(?:{rules.get('plate_pattern', 'x^')})$")
+    standard = rules.get("standard_pattern")
 
-    if cleaned != raw:
-        _fail(
-            f"{label}: only letters are allowed - '{raw}' was reduced to '{cleaned}'.",
-            strict, warnings,
-        )
-
-    cleaned = cleaned.upper() if upper else cleaned.lower()
-
-    if not cleaned:
-        raise VFXNamingError(f"{label} cannot be empty.")
-
-    if length and len(cleaned) != length:
-        _fail(
-            f"{label} must be exactly {length} letters "
-            f"(got '{cleaned}', {len(cleaned)}).",
-            strict, warnings,
-        )
-        if len(cleaned) > length:
-            cleaned = cleaned[:length]
-
-    return cleaned
-
-
-def _resolve_task(preset, custom, plate_layer, strict, warnings):
-    """Return (task_string, is_plate)."""
     task = (custom or "").strip() if preset == CUSTOM else preset
-
     if not task:
-        raise VFXNamingError(
+        raise NamingError(
             "Task is empty: pick a preset or fill in 'task_custom' when using "
             f"'{CUSTOM}'."
         )
 
-    if task.upper() == FINAL_TASK:
-        return FINAL_TASK, False
+    if final_task and task.upper() == final_task.upper():
+        return final_task, False
 
     base = re.sub(r"[^A-Za-z0-9]", "", task).lower()
     if base != task.lower().strip():
-        _fail(
-            f"Task: only letters and digits are allowed - '{task}' was reduced "
-            f"to '{base}'.",
-            strict, warnings,
-        )
+        _fail(f"Task: only letters and digits are allowed - '{task}' was reduced "
+              f"to '{base}'.", strict, warnings)
 
-    match = PLATE_RE.match(base)
+    match = plate_re.match(base)
     if match:
-        stem, layer = match.group(1), match.group(2)
+        groups = match.groups()
+        stem = groups[0] if groups and groups[0] else base
+        layer = groups[1] if len(groups) > 1 and groups[1] else ""
         if plate_layer > 0:
             if layer and int(layer) != plate_layer:
                 warnings.append(
@@ -130,13 +107,9 @@ def _resolve_task(preset, custom, plate_layer, strict, warnings):
                 layer = f"{plate_layer:02d}"
         return stem + (layer or ""), True
 
-    if not re.fullmatch(r"[a-z]{4}", base):
-        _fail(
-            f"Task '{base}' is not valid: use 4 lowercase letters (e.g. 'comp'), "
-            f"a 2-character plate type {PLATE_TASKS} optionally followed by a "
-            f"layer number (e.g. 'bg02'), or '{FINAL_TASK}'.",
-            strict, warnings,
-        )
+    if standard and not re.fullmatch(standard, base):
+        _fail(f"Task '{base}' is not valid for this schema: expected "
+              f"/{standard}/, a plate type, or '{final_task}'.", strict, warnings)
 
     return base, False
 
@@ -149,17 +122,13 @@ def _sanitize_path(value, strict, warnings):
 
     cleaned = re.sub(r"[^A-Za-z0-9_\-%:./]", "", raw)
     if cleaned != raw:
-        _fail(
-            f"parent_path: unsupported characters removed from '{raw}'.",
-            strict, warnings,
-        )
+        _fail(f"parent_path: unsupported characters removed from '{raw}'.",
+              strict, warnings)
 
     segments = [s for s in cleaned.split("/") if s and s != "."]
     if any(s == ".." for s in segments):
-        _fail(
-            "parent_path: '..' segments are not allowed and were removed.",
-            strict, warnings,
-        )
+        _fail("parent_path: '..' segments are not allowed and were removed.",
+              strict, warnings)
         segments = [s for s in segments if s != ".."]
 
     return "/".join(segments)
@@ -172,6 +141,7 @@ class VFXNamingConvention:
 
     @classmethod
     def INPUT_TYPES(cls):
+        schemas = schema_names()
         return {
             "required": {
                 "show_code": ("STRING", {
@@ -202,7 +172,7 @@ class VFXNamingConvention:
                     "default": "", "multiline": False,
                     "tooltip": (
                         "Vendor id: 3 letters, lowercase. Leave empty for lab "
-                        "plates - the component and its underscore are dropped."
+                        "plates - the component and its delimiter are dropped."
                     ),
                 }),
                 "version": ("INT", {
@@ -213,8 +183,8 @@ class VFXNamingConvention:
                     "default": True, "label_on": "folder + files",
                     "label_off": "files only",
                     "tooltip": (
-                        "Wrap the sequence in a folder named after the file "
-                        "basename, per the convention."
+                        "Render the schema's folder levels. Off writes the files "
+                        "straight into the output folder."
                     ),
                 }),
                 "strict": ("BOOLEAN", {
@@ -256,6 +226,29 @@ class VFXNamingConvention:
                         "this drives downstream nodes and the preview."
                     ),
                 }),
+                "schema": (schemas, {
+                    "default": schemas[0],
+                    "tooltip": (
+                        "Naming schema from the schemas/ folder: token rules, "
+                        "delimiters, token order and folder depth. Drop your own "
+                        "JSON in there to add a studio convention."
+                    ),
+                }),
+                "template_override": ("STRING", {
+                    "default": "", "multiline": True,
+                    "tooltip": (
+                        "Override the schema's templates for one node. Use "
+                        "{token}, [optional groups] and / for folder levels, e.g.\n"
+                        "{show}/{seq}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}"
+                    ),
+                }),
+                "custom_tokens": ("STRING", {
+                    "default": "", "multiline": True,
+                    "tooltip": (
+                        "Extra tokens for the template, one 'name=value' per line, "
+                        "e.g. episode=101. Reference them as {episode}."
+                    ),
+                }),
             },
         }
 
@@ -268,7 +261,7 @@ class VFXNamingConvention:
     )
     OUTPUT_TOOLTIPS = (
         "Connect to filename_prefix on Save Image / Save Image (Advanced) / video savers.",
-        "Name of the sequence folder.",
+        "Folder levels the schema renders (empty when there are none).",
         "Filename without frame number or extension.",
         "Show_Sequence_Shot identifier.",
         "File extension, lowercase and without a leading dot.",
@@ -279,7 +272,7 @@ class VFXNamingConvention:
     FUNCTION = "build"
     CATEGORY = "VFX/naming"
     DESCRIPTION = (
-        "Build a VFX naming convention filename_prefix:\n"
+        "Build a VFX naming convention filename_prefix from a JSON schema:\n"
         "<SHOW>_<SEQ>_<SHOT>_<TASK>_<VENDOR>_v<VERSION>.<FRAME>.<EXT>"
     )
 
@@ -302,18 +295,21 @@ class VFXNamingConvention:
         frame_padding=4,
         file_extension="exr",
         example_extension=None,
+        schema="vfx_default",
+        template_override="",
+        custom_tokens="",
     ):
         warnings = []
+        config = load_schema(schema)
 
-        show = _alpha_code(show_code, 3, True, "Show code", strict, warnings)
-        seq = _alpha_code(sequence_code, 3, True, "Sequence code", strict, warnings)
+        task_str, is_plate = _resolve_task(
+            config, task, task_custom, plate_layer, strict, warnings,
+        )
 
-        shot = f"{shot_number:0{shot_padding}d}"
-        if len(shot) > shot_padding:
-            _fail(
-                f"Shot number {shot_number} does not fit in {shot_padding} digits.",
-                strict, warnings,
-            )
+        extension = (example_extension or file_extension or "").strip().lstrip(".").lower()
+        if not extension:
+            raise NamingError("File extension cannot be empty.")
+
         if shot_number % 10 != 0:
             warnings.append(
                 f"Note: shot number {shot_number} is not a multiple of 10. The "
@@ -321,69 +317,81 @@ class VFXNamingConvention:
                 "are accepted."
             )
 
-        task_str, is_plate = _resolve_task(task, task_custom, plate_layer, strict, warnings)
+        raw = {
+            "show": show_code,
+            "seq": sequence_code,
+            "shot": shot_number,
+            "task": task_str,
+            "vendor": vendor_id,
+            "version": version,
+            "frame": first_frame,
+            "ext": extension,
+        }
+        pads = {"shot": shot_padding, "version": version_padding, "frame": frame_padding}
 
-        vendor = ""
-        raw_vendor = (vendor_id or "").strip()
-        if raw_vendor:
-            if is_plate:
-                warnings.append(
-                    f"Task '{task_str}' is a lab plate type; plates carry no "
-                    f"vendor id, so '{raw_vendor}' was dropped."
-                )
-            else:
-                vendor = _alpha_code(raw_vendor, 3, False, "Vendor id", strict, warnings)
-
-        ver = f"v{version:0{version_padding}d}"
-        if len(ver) - 1 > version_padding:
-            _fail(
-                f"Version {version} does not fit in {version_padding} digits.",
-                strict, warnings,
+        values = {}
+        for name, value in raw.items():
+            values[name] = config.spec(name).format(
+                value, strict, warnings, pad_override=pads.get(name),
             )
 
-        shot_id = f"{show}_{seq}_{shot}"
-        parts = [show, seq, shot, task_str]
-        if vendor:
-            parts.append(vendor)
-        parts.append(ver)
-        basename = "_".join(parts)
+        # Extra tokens declared by the schema but not backed by a widget.
+        extras = parse_custom_tokens(custom_tokens, strict)
+        for name, value in extras.items():
+            spec = config.tokens.get(name)
+            values[name] = spec.format(value, strict, warnings) if spec else value
+        for name, spec in config.tokens.items():
+            values.setdefault(name, "" if spec.optional else "")
 
-        folder_name = basename
+        config.apply_rules(values, warnings)
+
+        prefix_body, basename, unknown = config.render_prefix(
+            values,
+            include_folders=sequence_subfolder,
+            override=template_override,
+            strict=strict,
+        )
+        if unknown and not strict:
+            warnings.append(
+                "Template refers to unknown token(s): "
+                + ", ".join("{" + n + "}" for n in unknown)
+                + " - rendered as empty."
+            )
+
         parent = _sanitize_path(parent_path, strict, warnings)
+        filename_prefix = "/".join(s for s in (parent, prefix_body) if s)
 
-        prefix_segments = []
-        if parent:
-            prefix_segments.append(parent)
-        if sequence_subfolder:
-            prefix_segments.append(folder_name)
-        prefix_segments.append(basename)
-        filename_prefix = "/".join(prefix_segments)
-
-        extension = (example_extension or file_extension or "").strip().lstrip(".").lower()
-        if not extension:
-            raise VFXNamingError("File extension cannot be empty.")
-
-        example_filename = (
-            f"{basename}.{first_frame:0{frame_padding}d}.{extension}"
+        folder_name = "/".join(prefix_body.split("/")[:-1])
+        shot_id = "_".join(v for v in (values["show"], values["seq"], values["shot"]) if v)
+        example_filename, _ = render(
+            config.filename, dict(values, basename=basename), strict=False,
         )
 
         report_lines = [
-            "VFX NAMING CONVENTION",
-            "<SHOW>_<SEQ>_<SHOT>_<TASK>_<VENDOR>_v<VERSION>.<FRAME>.<EXT>",
+            f"SCHEMA: {config.label}  ({schema})",
+        ]
+        if config.description:
+            report_lines.append(f"  {config.description}")
+        report_lines += [
             "",
-            f"  Show code     : {show}",
-            f"  Sequence code : {seq}",
-            f"  Shot number   : {shot}",
-            f"  Task          : {task_str}"
+            f"  Show code     : {values['show']}",
+            f"  Sequence code : {values['seq']}",
+            f"  Shot number   : {values['shot']}",
+            f"  Task          : {values['task']}"
             + (f"  ({PLATE_LABELS.get(task_str[:2], 'plate')})" if is_plate else "")
             + ("  (approved final)" if task_str == FINAL_TASK else ""),
-            f"  Vendor id     : {vendor or '- (omitted)'}",
-            f"  Version       : {ver}",
-            f"  First frame   : {first_frame:0{frame_padding}d}",
+            f"  Vendor id     : {values['vendor'] or '- (omitted)'}",
+            f"  Version       : {values['version']}",
+            f"  First frame   : {values['frame']}",
             f"  Extension     : {extension}",
+        ]
+        for name in sorted(extras):
+            report_lines.append(f"  {name:<14}: {values.get(name, '')}  (custom)")
+        report_lines += [
             "",
+            f"  Template      : {(template_override.strip() or '/'.join(config.folders + [config.file]))}",
             f"  Shot ID       : {shot_id}",
-            f"  Folder        : {folder_name if sequence_subfolder else '- (none)'}",
+            f"  Folder        : {folder_name or '- (none)'}",
             f"  Prefix        : {filename_prefix}",
             f"  Example file  : {example_filename}",
         ]

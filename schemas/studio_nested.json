@@ -1,0 +1,75 @@
+{
+  "label": "Studio nested (show/seq/shot/task)",
+  "description": "Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.",
+  "tokens": {
+    "show": {
+      "label": "Show code",
+      "charset": "alpha",
+      "case": "upper",
+      "length": 3
+    },
+    "seq": {
+      "label": "Sequence code",
+      "charset": "alpha",
+      "case": "upper",
+      "length": 3
+    },
+    "shot": {
+      "label": "Shot number",
+      "type": "int",
+      "pad": 4
+    },
+    "task": {
+      "label": "Task",
+      "charset": "alnum"
+    },
+    "vendor": {
+      "label": "Vendor id",
+      "charset": "alpha",
+      "case": "lower",
+      "length": 3,
+      "optional": true
+    },
+    "version": {
+      "label": "Version",
+      "type": "int",
+      "pad": 3,
+      "prefix": "v"
+    },
+    "frame": {
+      "label": "Frame",
+      "type": "int",
+      "pad": 4
+    },
+    "ext": {
+      "label": "Extension",
+      "charset": "alnum",
+      "case": "lower"
+    }
+  },
+  "folders": [
+    "{show}",
+    "{seq}",
+    "{shot}",
+    "{task}[-{vendor}]"
+  ],
+  "file": "{version}-{shot}-{task}[-{vendor}]",
+  "filename": "{basename}.{frame}.{ext}",
+  "task_rules": {
+    "plate_pattern": "(mp|bg|fg|el|cp|rp)(\\d{1,2})?",
+    "standard_pattern": "[a-z]{4}",
+    "final": "FINAL"
+  },
+  "rules": [
+    {
+      "when": {
+        "token": "task",
+        "matches": "(mp|bg|fg|el|cp|rp)\\d*"
+      },
+      "omit": [
+        "vendor"
+      ],
+      "note": "Lab plates carry no vendor id"
+    }
+  ]
+}
