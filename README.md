@@ -302,18 +302,20 @@ Without a pipe connected, rows carry no glyph and behave exactly as before.
 - **Edit an inherited value** — typing into the field overrides it
   automatically, with no need to click the glyph first.
 - **Right-click the node** → **VFX overrides** submenu: one entry per
-  overridable field ("Override: task" / "Inherit: task"), plus **Inherit
-  all** to clear every override on the node at once.
+  overridable field ("○ Override task" when inherited, "● Inherit task" when
+  overridden), plus **Inherit all** to clear every override on the node at
+  once (shown only once something is overridden).
 
 Switching a field back to inherited re-mirrors the upstream value
 immediately.
 
 ### Collapsing inherited rows
 
-A switch at the bottom of the node reads "▾ *N* inherited fields · hide" /
-"▸ show *N* inherited fields". Toggling it hides, or shows again, every
-inherited and locked row — useful once a node overrides only one or two
-fields out of a large schema. It is present only while a pipe is connected.
+A switch at the bottom of the node reads "▾ hide *N* inherited fields" while
+inherited/locked rows are shown, and "▸ show *N* inherited fields" while they
+are hidden. Toggling it hides, or shows again, every inherited and locked
+row — useful once a node overrides only one or two fields out of a large
+schema. It is present only while a pipe is connected.
 
 ### Chains
 
@@ -324,13 +326,25 @@ anywhere in the chain still tracks the main node live.
 
 ### Refused overrides
 
-An override is refused when the named field does not exist on the pipe's
-schema, is `overridable: false`, or is invisible (`visible: false`):
+An override is refused for one of three reasons:
 
-- **Strict** (the pipe's effective `strict` option): the node fails with an
-  error naming the field.
-- **Permissive**: the inherited value is used instead and a note is added to
-  the `report` output — the run still completes.
+- the named field does not exist on the pipe's schema — "schema '&lt;key&gt;'
+  has no field '&lt;name&gt;'";
+- the field is locked (`overridable: false`, or invisible via
+  `visible: false`) — "'&lt;name&gt;' is locked by schema '&lt;key&gt;'";
+- the field belongs to a different schema than the one this node currently
+  shows, so this node has nothing of its own to apply — "this node has no
+  value for '&lt;name&gt;'".
+
+What governs strict vs. permissive is not this node's own `strict` widget in
+isolation, but the **merged effective `strict`** — the pipe's `strict`
+overridden by this node's own `strict` when `strict` is itself one of the
+fields being overridden (and that override is allowed):
+
+- **Strict**: the node fails with an error naming every refused field.
+- **Permissive**: the inherited value is used for each refused field instead,
+  and a note listing them is added to the `report` output — the run still
+  completes.
 
 ### Renderers
 
@@ -691,13 +705,28 @@ tested against 0.34.0.
 
 3.0 moves the ten outputs off **VFX Naming Convention** onto the new **VFX
 Naming Breakout** node; the naming node's only output is now `naming_pipe`.
-This is a breaking change: **a saved workflow with links from the old
-`filename_prefix`, `folder_name`, `directory`, `full_path`, `basename`,
-`shot_id`, `extension`, `example_filename`, `first_frame` or `report`
-outputs loses those links** and needs a VFX Naming Breakout node inserted
-between the naming node and whatever consumed them. Widget values are
-unaffected — the widget order has not changed, so no node needs to be
-deleted and re-added for this upgrade on its own.
+This is a breaking change, and it requires surgery, not just rewiring:
+**every existing VFX Naming Convention node has to be deleted and re-added.**
+
+The reason is how the frontend restores a saved node. `LGraphNode.configure()`
+(frontend 1.52.7) recreates a node's inputs and outputs from what was saved on
+disk, so an old node reopens with its ten old outputs and their links intact
+and no `naming_pipe` input at all — the node on the canvas does not match the
+node this version defines. Queuing a workflow with such a node fails
+validation, typically with "Return type mismatch" or "tuple index out of
+range". There is no automatic migration; `configure()` runs before this
+node's Python code ever sees the workflow, so nothing here can intervene.
+
+To upgrade:
+
+1. Note the widget values on each existing VFX Naming Convention node (schema,
+   tokens, options) — deleting the node loses them.
+2. Delete the node and add a fresh **VFX Naming Convention** in its place;
+   re-enter (or copy) the widget values you noted.
+3. Add a **VFX Naming Breakout** node and wire the naming node's
+   `naming_pipe` output into it, then reconnect the breakout's outputs
+   (`filename_prefix`, `directory`, `shot_id`, ...) to whatever the old node's
+   outputs used to feed.
 
 ## Upgrading to 2.0
 

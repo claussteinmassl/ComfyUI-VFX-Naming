@@ -227,3 +227,12 @@ class TestBreakout(unittest.TestCase):
     def test_it_refuses_a_foreign_pipe(self):
         with self.assertRaises(engine.NamingError):
             self.breakout().execute(naming_pipe={"filename_prefix": "x"})
+
+    def test_it_refuses_a_pipe_with_an_incomplete_result(self):
+        """A `result` dict missing one of RESULT_NAMES must raise NamingError,
+        not a bare KeyError from inside execute()."""
+        pipe = _parent()
+        pipe = dict(pipe, result=dict(pipe["result"]))
+        del pipe["result"]["extension"]
+        with self.assertRaises(engine.NamingError):
+            self.breakout().execute(naming_pipe=pipe)

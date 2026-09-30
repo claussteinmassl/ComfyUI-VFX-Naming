@@ -240,6 +240,7 @@ def _check_pipe(pipe):
         and isinstance(pipe.get("tokens"), dict)
         and isinstance(pipe.get("options"), dict)
         and isinstance(pipe.get("result"), dict)
+        and set(RESULT_NAMES) <= set(pipe["result"])
     )
     if not valid:
         raise NamingError(

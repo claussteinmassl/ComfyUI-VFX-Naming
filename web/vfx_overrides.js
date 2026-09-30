@@ -325,7 +325,8 @@ document.addEventListener("pointerdown", (event) => {
     const cell = event.target?.closest?.(`${ROW} ${LABEL}`);
     if (!cell) return;
     const id = cell.closest("[data-node-id]")?.dataset?.nodeId;
-    const node = app.graph?.getNodeById?.(id) ?? app.graph?.getNodeById?.(Number(id));
+    const graph = app.canvas?.graph ?? app.graph;
+    const node = graph?.getNodeById?.(id) ?? graph?.getNodeById?.(Number(id));
     if (classOf(node) !== NODE_CLASS) return;
     const widget = widgetForLabel(node, cell);
     if (!widget || !togglable(widget)) return;

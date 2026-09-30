@@ -82,6 +82,24 @@ class TestOptionFlags(unittest.TestCase):
         with self.assertRaises(engine.NamingError):
             self.schema(options={"strict": {"visible": 0}})
 
+    def test_a_non_dict_option_config_is_rejected(self):
+        for bad in (5, "yes", ["visible", False], True):
+            with self.subTest(bad=bad):
+                with self.assertRaises(engine.NamingError) as caught:
+                    self.schema(options={"strict": bad})
+                self.assertIn("strict", str(caught.exception))
+
+    def test_an_option_value_must_match_the_default_type(self):
+        # strict/folders default to bool; a string value is not a boolean.
+        with self.assertRaises(engine.NamingError) as caught:
+            self.schema(options={"strict": {"value": "nope"}})
+        self.assertIn("strict", str(caught.exception))
+
+        # parent_path/template_override/custom_tokens default to str.
+        with self.assertRaises(engine.NamingError) as caught:
+            self.schema(options={"parent_path": {"value": 5}})
+        self.assertIn("parent_path", str(caught.exception))
+
     def test_option_overridable_is_validated_even_when_hidden(self):
         with self.assertRaises(engine.NamingError) as caught:
             self.schema(options={"strict": {"visible": False, "overridable": "no"}})

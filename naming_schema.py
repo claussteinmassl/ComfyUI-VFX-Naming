@@ -513,7 +513,13 @@ class Schema:
                 f"'options'. Known: {', '.join(OPTION_NAMES)}.")
         flags = {}
         for name in OPTION_NAMES:
-            config = block.get(name) or {}
+            config = block.get(name)
+            if config is None:
+                config = {}
+            elif not isinstance(config, dict):
+                raise NamingError(
+                    f"Schema '{key}': option '{name}' must be a dict of "
+                    f"{', '.join(OPTION_FLAG_KEYS)} (got {config!r}).")
             stray = sorted(set(config) - set(OPTION_FLAG_KEYS))
             if stray:
                 raise NamingError(
@@ -522,10 +528,16 @@ class Schema:
             where = f"Schema '{key}', option '{name}'"
             visible = _flag(config, "visible", where)
             overridable_flag = _flag(config, "overridable", where)
+            default = OPTION_DEFAULTS[name]
+            value = config.get("value", default)
+            if type(value) is not type(default):
+                raise NamingError(
+                    f"{where}: 'value' must be a {type(default).__name__} "
+                    f"(got {value!r}).")
             flags[name] = {
                 "visible": visible,
                 "overridable": visible and overridable_flag,
-                "value": config.get("value", OPTION_DEFAULTS[name]),
+                "value": value,
             }
         return flags
 
