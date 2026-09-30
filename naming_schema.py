@@ -294,7 +294,8 @@ class TokenSpec:
         # receives a pipe may override it. A hidden token always renders its
         # initial value, so there is nothing to override.
         self.visible = _flag(config, "visible", f"Token '{name}'")
-        self.overridable = self.visible and _flag(config, "overridable", f"Token '{name}'")
+        overridable_flag = _flag(config, "overridable", f"Token '{name}'")
+        self.overridable = self.visible and overridable_flag
 
         # Characters kept on top of `charset`, e.g. "-" to separate words. Only
         # meaningful for characters the schema does not use as a delimiter.
@@ -520,9 +521,10 @@ class Schema:
                     f"{', '.join(stray)}. Known: {', '.join(OPTION_FLAG_KEYS)}.")
             where = f"Schema '{key}', option '{name}'"
             visible = _flag(config, "visible", where)
+            overridable_flag = _flag(config, "overridable", where)
             flags[name] = {
                 "visible": visible,
-                "overridable": visible and _flag(config, "overridable", where),
+                "overridable": visible and overridable_flag,
                 "value": config.get("value", OPTION_DEFAULTS[name]),
             }
         return flags

@@ -40,6 +40,11 @@ class TestTokenFlags(unittest.TestCase):
                     engine.TokenSpec("t", {key: "no"})
                 self.assertIn(key, str(caught.exception))
 
+    def test_overridable_is_validated_even_when_hidden(self):
+        with self.assertRaises(engine.NamingError) as caught:
+            engine.TokenSpec("t", {"visible": False, "overridable": "no"})
+        self.assertIn("overridable", str(caught.exception))
+
 
 class TestOptionFlags(unittest.TestCase):
 
@@ -76,6 +81,11 @@ class TestOptionFlags(unittest.TestCase):
     def test_a_non_boolean_option_flag_is_rejected(self):
         with self.assertRaises(engine.NamingError):
             self.schema(options={"strict": {"visible": 0}})
+
+    def test_option_overridable_is_validated_even_when_hidden(self):
+        with self.assertRaises(engine.NamingError) as caught:
+            self.schema(options={"strict": {"visible": False, "overridable": "no"}})
+        self.assertIn("overridable", str(caught.exception))
 
     def test_a_token_may_not_share_a_name_with_an_option(self):
         with self.assertRaises(engine.NamingError) as caught:
