@@ -177,13 +177,15 @@ function mirror(node, source, overrides) {
 // A label as it was before decoration. The Vue renderer keeps widget state
 // (label included) per node id, so a new node that reuses an id can start out
 // with an old glyph or padding already in its label.
-const GLYPH_PREFIX = /^(?:[○●⛓] |\u00a0)+/;
+const GLYPH_PREFIX = /^(?:[○●⛓] |\u00a0|\u2009)+/;
 
 // Canvas rows make room for the switch with non-breaking spaces rather than a
 // glyph: the label starts at x = 35 on rows with stepper arrows and at x = 30
 // on the others, a non-breaking space is 3.4 px wide in the widget font
-// (12px Inter, frontend 1.52.7), and the switch ends at x = 62 / 48.
-const PAD = { stepped: "\u00a0".repeat(9), plain: "\u00a0".repeat(7) };
+// (12px Inter, frontend 1.52.7), and the switch ends at x = 62 on every row.
+// The plain rows get more padding so all labels start in one column too.
+// A thin space (U+2009, 2.4 px) closes the last gap on the plain rows.
+const PAD = { stepped: "\u00a0".repeat(9), plain: "\u00a0".repeat(10) + "\u2009" };
 
 const vueMode = () => !!globalThis.LiteGraph?.vueNodesMode;
 
@@ -315,11 +317,13 @@ const within = (x, zone) => !!zone && x >= zone[0] && x <= zone[1];
 
 // Where the switch sits on a canvas row, in node-local x (frontend 1.52.7).
 // The stock stepper widgets (number, combo) decrement on any click at x < 40
-// and draw their left arrow at x = 21..31, so on those rows the switch starts
-// after that zone; text and toggle rows have no arrows and start it at the
-// widget's rounded edge. The click zones add a pixel or two of slack.
-const switchSpan = (widget) => (stepped(widget) ? [42, 62] : [28, 48]);
-const switchZone = (widget) => (stepped(widget) ? [41, 64] : [27, 50]);
+// and draw their left arrow at x = 21..31, so the switch starts after that
+// zone. Rows without arrows use the same position, leaving the space empty,
+// so every switch sits in one column. The click zone adds a little slack.
+const SWITCH_SPAN = [42, 62];
+const SWITCH_ZONE = [41, 64];
+const switchSpan = () => SWITCH_SPAN;
+const switchZone = () => SWITCH_ZONE;
 
 // Where the stock widgets start their label: margin * 2 plus the left padding
 // of drawTruncatingText() (5 on stepper rows, 0 on text rows; toggle rows draw
