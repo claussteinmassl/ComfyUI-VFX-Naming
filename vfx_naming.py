@@ -34,6 +34,7 @@ from .naming_schema import (
     parse_custom_tokens,
     render,
     schema_names,
+    schema_source,
 )
 
 # Kept as an alias so existing imports and error handling keep working.
@@ -540,6 +541,9 @@ class VFXNamingConvention(io.ComfyNode):
         lines = [f"SCHEMA: {config.label}  ({key})"]
         if config.description:
             lines.append(f"  {config.description}")
+        source = schema_source(key)
+        if source:
+            lines.append(f"  Source : {source[0]} ({source[1]})")
         lines.append("")
 
         width = max([len(s.label) for s in config.tokens.values()] + [12])

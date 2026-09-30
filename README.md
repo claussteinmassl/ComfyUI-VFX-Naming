@@ -188,7 +188,7 @@ widgets, and none of the token names below are known to the Python code.
 | Input | Purpose |
 |---|---|
 | `naming_pipe` | optional — inherit schema, tokens and options from an upstream VFX Naming Convention node instead of configuring this node from scratch; see **Inheriting and overriding (naming pipe)** below |
-| `schema` | which JSON schema in `schemas/` to render — and therefore which fields appear below it. Ignored while `naming_pipe` is connected: the schema always comes from upstream |
+| `schema` | which JSON schema to render (see [Where schemas live](#where-schemas-live)) — and therefore which fields appear below it. Ignored while `naming_pipe` is connected: the schema always comes from upstream |
 | `folders` | on = render the schema's folder levels, off = files straight into the output folder |
 | `strict` | on = abort on any violation; off = auto-correct and warn |
 | `parent_path` | optional sub-path, e.g. `SHW/SEQ` or `%date:yyyy-MM-dd%` |
@@ -386,7 +386,8 @@ overrides" context menu always work in both renderers.
 No naming rule is hardcoded in the logic. Which tokens exist, how each one is
 cased, padded and validated, the delimiters, the order of the tokens, how many
 folder levels they render into **and how each token is offered in the node** all
-live in JSON under [`schemas/`](schemas). `naming_schema.py` is only the engine
+live in JSON (the presets in [`schemas/`](schemas), your own elsewhere, see
+[Where schemas live](#where-schemas-live)). `naming_schema.py` is only the engine
 that loads and renders them; `vfx_naming.py` contains no token name and no token
 vocabulary at all.
 
@@ -429,9 +430,39 @@ shots/sh010/roto_hair/out/sh010_roto_hair_v001_acescg_1001.1001.exr
 present and sometimes not cannot be parsed back reliably, so `variant` always
 occupies its slot and every name splits into the same components.
 
+### Where schemas live
+
+`schemas/` in this repository holds only the presets that ship with the node.
+Your own and your clients' schemas belong outside it, so they survive node
+updates and can never be committed by accident. Schemas are read from three
+places; when the same file name (without `.json`) appears in more than one, the
+later source wins:
+
+1. the built-in presets in the node's `schemas/` folder
+2. the directories in the environment variable `VFX_NAMING_SCHEMA_DIR`,
+   separated by `;` on Windows and `:` on macOS/Linux. Later entries win over
+   earlier ones, which suits a studio network share
+3. the ComfyUI user folder, `<ComfyUI>/user/vfx_naming/schemas/`. It is created
+   the first time the node loads
+
+```
+# Windows (cmd)
+set VFX_NAMING_SCHEMA_DIR=\\server\pipeline\naming;D:\my_schemas
+
+# macOS / Linux
+export VFX_NAMING_SCHEMA_DIR=/mnt/pipeline/naming:$HOME/my_schemas
+```
+
+Restart ComfyUI to pick up new or changed files. Don't put private schemas into
+the node folder. An unknown schema key is an error that lists every folder
+that was searched; only `vfx_default` has an embedded fallback. The report's
+`Source` line shows which of the three a schema came from.
+
 ### Writing your own
 
-Drop a JSON file in `schemas/` and it appears in the dropdown after a restart:
+Drop a JSON file in the ComfyUI user folder `user/vfx_naming/schemas/` (or a
+`VFX_NAMING_SCHEMA_DIR` directory, see above) and it appears in the dropdown
+after a restart:
 
 ```json
 {

@@ -78,7 +78,12 @@ import os
 import re
 import sys
 
+# The presets that ship with the node. Custom schemas live elsewhere; see
+# `schema_dirs()`.
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "schemas")
+
+# Directories (split with os.pathsep) holding extra schemas, e.g. a studio share.
+SCHEMA_DIR_ENV = "VFX_NAMING_SCHEMA_DIR"
 
 TOKEN_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)(?::([^}]*))?\}")
 PAD_MOD_RE = re.compile(r"^0?(\d+)$")
@@ -631,18 +636,71 @@ def _builtin_default():
     return Schema("vfx_default", json.loads(DEFAULT_SCHEMA_JSON))
 
 
-def available_schemas():
-    """Map of schema key -> file path, for every JSON under schemas/."""
+def _user_schema_dir():
+    """The ComfyUI user folder for schemas, created on first use.
+
+    Returns:
+        The path, or None when ComfyUI's `folder_paths` is not importable
+        (engine-only use) or the folder cannot be created.
+    """
+    try:
+        import folder_paths
+        path = os.path.join(folder_paths.get_user_directory(),
+                            "vfx_naming", "schemas")
+        os.makedirs(path, exist_ok=True)
+    except (ImportError, AttributeError, OSError):
+        return None
+    return path
+
+
+def schema_dirs():
+    """Every directory schemas are read from, lowest precedence first.
+
+    Returns:
+        A list of `(kind, path)`: the built-in presets ("built-in"), each
+        directory in `VFX_NAMING_SCHEMA_DIR` ("studio") and the ComfyUI user
+        folder ("user"). A key found in a later entry replaces an earlier one.
+    """
+    dirs = [("built-in", SCHEMA_DIR)]
+    for entry in os.environ.get(SCHEMA_DIR_ENV, "").split(os.pathsep):
+        if entry.strip():
+            dirs.append(("studio", os.path.expanduser(entry.strip())))
+    user = _user_schema_dir()
+    if user:
+        dirs.append(("user", user))
+    return dirs
+
+
+def _scan_schemas():
+    """Map of schema key -> (kind, file path), later sources winning."""
     found = {}
-    if os.path.isdir(SCHEMA_DIR):
-        for entry in sorted(os.listdir(SCHEMA_DIR)):
+    for kind, directory in schema_dirs():
+        if not os.path.isdir(directory):
+            continue
+        for entry in sorted(os.listdir(directory)):
             if entry.lower().endswith(".json"):
-                found[os.path.splitext(entry)[0]] = os.path.join(SCHEMA_DIR, entry)
+                found[os.path.splitext(entry)[0]] = (
+                    kind, os.path.join(directory, entry))
     return found
 
 
+def available_schemas():
+    """Map of schema key -> file path, merged from every source by precedence."""
+    return {key: path for key, (_, path) in _scan_schemas().items()}
+
+
+def schema_source(key):
+    """Where a schema comes from.
+
+    Returns:
+        `(kind, path)`, or None for the embedded default (no file anywhere).
+    """
+    return _scan_schemas().get(key)
+
+
 def schema_names():
-    names = list(available_schemas())
+    """Dropdown order: `vfx_default` first, the rest sorted, no duplicates."""
+    names = sorted(available_schemas())
     if "vfx_default" in names:
         names.remove("vfx_default")
         names.insert(0, "vfx_default")
@@ -650,11 +708,21 @@ def schema_names():
 
 
 def load_schema(key):
-    path = available_schemas().get(key)
-    if not path:
-        return _builtin_default()
+    """Load a schema by key.
+
+    Raises:
+        NamingError: The key is unknown (the message lists every directory
+            searched) or its file cannot be read.
+    """
+    source = schema_source(key)
+    if not source:
+        if key == "vfx_default":
+            return _builtin_default()
+        searched = ", ".join(path for _, path in schema_dirs())
+        raise NamingError(
+            f"Unknown schema '{key}'. Searched: {searched}")
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(source[1], "r", encoding="utf-8") as handle:
             return Schema(key, json.load(handle))
     except (OSError, ValueError) as error:
         raise NamingError(f"Could not load schema '{key}': {error}")

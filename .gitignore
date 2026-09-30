@@ -16,3 +16,6 @@ docs/
 
 # Local planning notes
 tasks/
+
+# Local tests for private schemas
+tests/local/

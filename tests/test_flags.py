@@ -14,6 +14,7 @@ import unittest
 from unittest import mock
 
 from test_naming import _named, engine, needs_node, node_pkg
+from test_naming import setUpModule, tearDownModule  # noqa: F401
 
 
 class TestTokenFlags(unittest.TestCase):

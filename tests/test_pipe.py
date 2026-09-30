@@ -12,6 +12,7 @@ from unittest import mock
 
 from test_flags import FLAGGED, FlaggedSchemaCase
 from test_naming import engine, needs_node, node_pkg
+from test_naming import setUpModule, tearDownModule  # noqa: F401
 
 
 def _node():

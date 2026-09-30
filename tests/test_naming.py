@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(ROOT))
@@ -92,6 +93,31 @@ needs_node = unittest.skipUnless(
     f"comfy_api not importable ({node_pkg if not NODE_AVAILABLE else ''}) - "
     "set COMFYUI_PATH to run the node tests",
 )
+
+
+_ISOLATION = []
+
+
+def setUpModule():
+    """Keep the user folder and VFX_NAMING_SCHEMA_DIR out of these tests.
+
+    The suite asserts on the shipped presets, so neither the developer's own
+    ComfyUI user folder nor a studio share may leak into what it finds.
+    test_flags and test_pipe import both hooks, so they apply there too.
+    """
+    _ISOLATION[:] = [
+        mock.patch.object(engine, "_user_schema_dir", lambda: None),
+        mock.patch.dict(os.environ),
+    ]
+    for patcher in _ISOLATION:
+        patcher.start()
+    os.environ.pop(engine.SCHEMA_DIR_ENV, None)
+
+
+def tearDownModule():
+    for patcher in reversed(_ISOLATION):
+        patcher.stop()
+    _ISOLATION.clear()
 
 
 # --- Engine ------------------------------------------------------------------
