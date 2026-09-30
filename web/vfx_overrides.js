@@ -1,3 +1,4 @@
+import { app } from "../../scripts/app.js";
 import {
     NODE_CLASS, OVERRIDES_WIDGET, SCHEMA_WIDGET, OPTION_NAMES,
     classOf, fieldOf, findWidget, schemaFlags,
@@ -144,9 +145,14 @@ function mirror(node, source, overrides) {
     return changed;
 }
 
+// A label as it was before decoration. The Vue renderer keeps widget state
+// (label included) per node id, so a new node that reuses an id can start out
+// with an old glyph already in its label.
+const GLYPH_PREFIX = /^(?:[○●⛓] )+/;
+
 function decorate(widget, state, glyph) {
-    if (!("__vfxLabel" in widget)) widget.__vfxLabel = widget.label;
-    const base = widget.__vfxLabel ?? widget.name.split(".").pop();
+    if (!("__vfxLabel" in widget)) widget.__vfxLabel = widget.label?.replace(GLYPH_PREFIX, "");
+    const base = widget.__vfxLabel || widget.name.split(".").pop();
     const label = state && glyph ? GLYPH[state] + base : base;
     if (widget.label !== label) widget.label = label;
 
@@ -208,6 +214,110 @@ function wrapCanvasDraw(widget) {
             ctx.restore();
         }
     };
+
+    // A click on the glyph toggles the row; anywhere else the widget behaves
+    // as usual. processWidgetClick() asks onPointerDown() first.
+    const original = widget.onPointerDown;
+    widget.onPointerDown = function (pointer, node, canvas) {
+        if (togglable(this)) {
+            const x = canvas.graph_mouse[0] - node.pos[0];
+            const [from, to] = glyphZone(this);
+            if (x >= from && x <= to) {
+                pointer.onClick = () => toggle(node, fieldOf(this));
+                return true;
+            }
+        }
+        return original ? original.call(this, pointer, node, canvas) : false;
+    };
+}
+
+// Where the glyph sits on a canvas row, in node-local x (measured on a 2x zoom
+// screenshot against frontend 1.52.7). The glyph is drawn at x = 31..35 on
+// text and toggle rows and at x = 36..40 on rows with stepper arrows (number,
+// combo); the zones add a few px of slack and end before the label text. The
+// socket gutter (x < 15) belongs to the input slot. The stepper's left arrow
+// is drawn at x = 21..31 and keeps x < 33 as its hit area.
+function glyphZone(widget) {
+    return widget.type === "number" || widget.type === "combo" ? [33, 45] : [26, 39];
+}
+
+const togglable = (widget) =>
+    widget.__vfxGlyph && (widget.__vfxState === "inherited" || widget.__vfxState === "overridden");
+
+/** Flip one field between inherited and overridden. */
+export function toggle(node, field) {
+    if (!field) return;
+    const overrides = readOverrides(node);
+    if (overrides.has(field)) overrides.delete(field);
+    else overrides.add(field);
+    writeOverrides(node, overrides);
+    forget(node, field);   // an inherited field re-mirrors on this pass
+    syncOverrides(node);
+    node.setDirtyCanvas?.(true, true);
+}
+
+export function inheritAll(node) {
+    writeOverrides(node, new Set());
+    node.__vfxMirrored?.clear();
+    syncOverrides(node);
+    node.setDirtyCanvas?.(true, true);
+}
+
+// Vue nodes renderer. There is no API to decorate a widget row, so this reads
+// the rendered DOM: a row is `.lg-node-widget`, its label cell carries
+// data-testid="widget-layout-field-label" and shows `widget.label`, the cell
+// after it holds the value. If the markup changes, the glyph in the label,
+// auto-override on edit and the context menu still work.
+const ROW = ".lg-node-widget";
+const LABEL = '[data-testid="widget-layout-field-label"]';
+
+function widgetForLabel(node, cell) {
+    const text = cell?.textContent?.trim();
+    return node.widgets?.find((w) => (w.label ?? w.name) === text) ?? null;
+}
+
+/** Style the node's Vue rows after their state. The Vue renderer remounts rows, so this runs every tick. */
+export function decorateVue(node) {
+    const element = document.querySelector(`[data-node-id="${node.id}"]`);
+    if (!element) return;
+    for (const row of element.querySelectorAll(ROW)) {
+        const cell = row.querySelector(LABEL);
+        if (!cell) continue;
+        const widget = widgetForLabel(node, cell);
+        const state = widget?.__vfxState;
+        const value = cell.nextElementSibling;
+        if (value?.style) value.style.opacity = state === "inherited" ? "0.45" : "";
+        cell.style.color = state === "overridden" ? ACCENT : "";
+        cell.style.cursor = widget && togglable(widget) ? "pointer" : "";
+    }
+}
+
+document.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const cell = event.target?.closest?.(`${ROW} ${LABEL}`);
+    if (!cell) return;
+    const id = cell.closest("[data-node-id]")?.dataset?.nodeId;
+    const node = app.graph?.getNodeById?.(id) ?? app.graph?.getNodeById?.(Number(id));
+    if (classOf(node) !== NODE_CLASS) return;
+    const widget = widgetForLabel(node, cell);
+    if (!widget || !togglable(widget)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    toggle(node, fieldOf(widget));
+}, true);
+
+/** Entries for the node's right-click menu (canvas and Vue renderer alike). */
+export function menuItems(node) {
+    if (classOf(node) !== NODE_CLASS || !upstreamOf(node).linked) return [];
+    const overrides = readOverrides(node);
+    const options = fieldsOf(node)
+        .filter((field) => stateOf(node, field, overrides) !== "locked")
+        .map((field) => ({
+            content: overrides.has(field) ? `● Inherit ${field}` : `○ Override ${field}`,
+            callback: () => toggle(node, field),
+        }));
+    if (overrides.size) options.push(null, { content: "Inherit all", callback: () => inheritAll(node) });
+    return [null, { content: "VFX overrides", has_submenu: true, submenu: { options } }];
 }
 
 /**
@@ -226,6 +336,7 @@ export function syncOverrides(node) {
             for (const widget of node.widgets ?? []) undecorate(widget);
             node.__vfxMirrored?.clear();
             node.__vfxLinked = false;
+            decorateVue(node);   // __vfxState is null now: rows lose their styling
             node.setDirtyCanvas?.(true, true);
         }
         return () => false;
@@ -240,5 +351,6 @@ export function syncOverrides(node) {
         const field = fieldOf(widget);
         if (field) decorate(widget, stateOf(node, field, overrides), isFieldRow(widget, field));
     }
+    decorateVue(node);
     return () => false;   // Task 9 returns the collapse predicate here
 }

@@ -3,7 +3,7 @@ import {
     NODE_CLASS, OVERRIDES_WIDGET, PREVIEW_WIDGET, applyVisibility, classOf,
     loadSchemaFlags,
 } from "./vfx_widgets.js";
-import { syncOverrides } from "./vfx_overrides.js";
+import { menuItems, syncOverrides } from "./vfx_overrides.js";
 
 // Grid stepping for the VFX Naming Convention node's numeric tokens.
 //
@@ -275,6 +275,10 @@ app.registerExtension({
 
     async setup() {
         await loadSchemaFlags();
+    },
+
+    getNodeMenuItems(node) {
+        return menuItems(node);
     },
 
     nodeCreated(node) {
