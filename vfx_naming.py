@@ -29,7 +29,6 @@ from comfy_api.latest import io
 from .naming_schema import (
     CUSTOM,
     NamingError,
-    OPTION_DEFAULTS,
     OPTION_NAMES,
     load_schema,
     parse_custom_tokens,
@@ -233,8 +232,16 @@ def _token_values(spec, supplied):
 def _check_pipe(pipe):
     """Refuse anything that is not a naming pipe of this version."""
     required = {"version", "schema", "tokens", "options", "result"}
-    if (not isinstance(pipe, dict) or pipe.get("version") != PIPE_VERSION
-            or not required <= set(pipe)):
+    valid = (
+        isinstance(pipe, dict)
+        and pipe.get("version") == PIPE_VERSION
+        and required <= set(pipe)
+        and isinstance(pipe.get("schema"), str)
+        and isinstance(pipe.get("tokens"), dict)
+        and isinstance(pipe.get("options"), dict)
+        and isinstance(pipe.get("result"), dict)
+    )
+    if not valid:
         raise NamingError(
             "naming_pipe: this is not a VFX naming pipe - connect the output "
             "of a VFX Naming Convention node.")
@@ -278,7 +285,8 @@ def _inherit(pipe, own_tokens, own_options, overridden):
     tokens = dict(pipe["tokens"])
     options = dict(pipe["options"])
 
-    refused = []
+    refused = []          # human-readable reasons, for the error/warning text
+    refused_names = set()  # field names that were refused, for `applied`
     for name in overridden:
         if name in OPTION_NAMES:
             flags = config.option_flags(name)
@@ -287,22 +295,27 @@ def _inherit(pipe, own_tokens, own_options, overridden):
                 continue
             refused.append(f"'{name}' is locked by schema '{key}'")
         elif name in config.tokens:
-            if config.tokens[name].overridable:
-                tokens[name] = own_tokens.get(name)
+            if not config.tokens[name].overridable:
+                refused.append(f"'{name}' is locked by schema '{key}'")
+            elif name not in own_tokens:
+                # A different schema on this node, or a stale override list -
+                # there is nothing of this node's own to apply.
+                refused.append(f"this node has no value for '{name}'")
+            else:
+                tokens[name] = own_tokens[name]
                 continue
-            refused.append(f"'{name}' is locked by schema '{key}'")
         else:
             refused.append(f"schema '{key}' has no field '{name}'")
+        refused_names.add(name)
 
     notes = []
     if refused:
-        message = ("Cannot override: " + "; ".join(refused)
-                   + " - the inherited value is used.")
+        joined = "; ".join(refused)
         if config.effective_options(options)["strict"]:
-            raise NamingError(message)
-        notes.append(message)
+            raise NamingError(f"Cannot override: {joined}.")
+        notes.append(f"Cannot override: {joined} - the inherited value is used.")
 
-    applied = [n for n in overridden if not any(f"'{n}'" in r for r in refused)]
+    applied = [n for n in overridden if n not in refused_names]
     return build(key, tokens, options, notes=notes, overridden=applied)
 
 

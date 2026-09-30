@@ -3,10 +3,14 @@ Tests for the naming pipe: inheriting from an upstream node, overriding single
 fields, and unpacking the result with the breakout node.
 """
 
+import copy
 import json
+import os
+import tempfile
 import unittest
+from unittest import mock
 
-from test_flags import FlaggedSchemaCase
+from test_flags import FLAGGED, FlaggedSchemaCase
 from test_naming import engine, needs_node, node_pkg
 
 
@@ -66,6 +70,17 @@ class TestInheritance(unittest.TestCase):
         self.assertEqual(child["result"]["filename_prefix"],
                          "SHW_SEQ_0010_comp_v001")
 
+    def test_an_override_with_no_value_of_its_own_is_refused(self):
+        """Listed as overridden but never actually supplied (e.g. the node's
+        own schema does not carry that field) - must not silently inherit an
+        empty/None value; it has to be refused like any other bad override."""
+        with self.assertRaises(engine.NamingError) as caught:
+            _child(_parent(), ["task"])
+        self.assertIn("task", str(caught.exception))
+        child = _child(_parent(strict=False), ["task"], strict=False)
+        self.assertIn("task", child["result"]["report"])
+        self.assertEqual(child["result"]["basename"], "SHW_SEQ_0010_comp_v001")
+
     def test_a_chain_of_three(self):
         parent = _parent(show="ABC")
         child = _child(parent, ["task"], task="roto")
@@ -92,6 +107,18 @@ class TestInheritance(unittest.TestCase):
                 with self.assertRaises(engine.NamingError):
                     _child(junk)
 
+    def test_a_malformed_pipe_shape_is_refused(self):
+        """A pipe with the right keys but the wrong value types must raise
+        NamingError, not a TypeError from deeper inside the merge."""
+        base = {"version": 1, "schema": "vfx_default", "tokens": {},
+                "options": {}, "result": {}}
+        for field, bad in (("schema", 5), ("tokens", "x"),
+                           ("options", ["x"]), ("result", None)):
+            with self.subTest(field=field):
+                junk = dict(base, **{field: bad})
+                with self.assertRaises(engine.NamingError):
+                    _child(junk)
+
     def test_malformed_overrides_are_refused(self):
         with self.assertRaises(engine.NamingError):
             _node().execute(schema={"schema": "vfx_default"},
@@ -113,12 +140,68 @@ class TestLockedOverrides(FlaggedSchemaCase):
         parent = _parent("flagged")
         child = _child(parent, ["folders"], schema="flagged", folders=False)
         self.assertIn("/", child["result"]["filename_prefix"])
+        self.assertIn("folders", child["result"]["report"])
+        self.assertIn("locked", child["result"]["report"])
 
     def test_a_hidden_option_cannot_be_overridden(self):
         parent = _parent("flagged")
         child = _child(parent, ["template_override"], schema="flagged",
                        template_override="{task}")
         self.assertEqual(child["result"]["basename"], "SHW_comp_v001")
+
+    def test_a_hidden_token_cannot_be_overridden(self):
+        """'mount' is hidden (visible: False), so it is locked like 'show' -
+        FLAGGED also hides strict, so this is a warning, not a raise."""
+        parent = _parent("flagged")
+        child = _child(parent, ["mount"], schema="flagged", mount="/evil")
+        self.assertIn("mount", child["result"]["report"])
+        self.assertTrue(child["result"]["directory"].startswith("/mnt/proj/"))
+
+
+# FLAGGED hides `strict` and fixes it to False, so TestLockedOverrides above
+# only exercises the permissive (warning) path. This is FLAGGED with that one
+# option restored to its default (visible, overridable, True), so a refused
+# override can be seen raising in strict mode too.
+FLAGGED_STRICT = copy.deepcopy(FLAGGED)
+del FLAGGED_STRICT["options"]["strict"]
+FLAGGED_STRICT["label"] = "Flagged strict"
+
+
+class FlaggedStrictSchemaCase(unittest.TestCase):
+    """Runs each test with `schemas/` replaced by a folder holding
+    FLAGGED_STRICT under the key 'flagged_strict'."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        with open(os.path.join(self._tmp.name, "flagged_strict.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(FLAGGED_STRICT, handle)
+        patcher = mock.patch.object(engine, "SCHEMA_DIR", self._tmp.name)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self._tmp.cleanup)
+
+
+@needs_node
+class TestLockedOverridesStrict(FlaggedStrictSchemaCase):
+
+    def test_a_locked_token_override_raises_in_strict(self):
+        parent = _parent("flagged_strict")
+        with self.assertRaises(engine.NamingError) as caught:
+            _child(parent, ["show"], schema="flagged_strict", show="XYZ")
+        self.assertIn("show", str(caught.exception))
+
+    def test_a_hidden_token_override_raises_in_strict(self):
+        parent = _parent("flagged_strict")
+        with self.assertRaises(engine.NamingError) as caught:
+            _child(parent, ["mount"], schema="flagged_strict", mount="/evil")
+        self.assertIn("mount", str(caught.exception))
+
+    def test_a_locked_option_override_raises_in_strict(self):
+        parent = _parent("flagged_strict")
+        with self.assertRaises(engine.NamingError) as caught:
+            _child(parent, ["folders"], schema="flagged_strict", folders=False)
+        self.assertIn("folders", str(caught.exception))
 
 
 @needs_node
