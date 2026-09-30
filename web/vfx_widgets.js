@@ -74,9 +74,13 @@ export function relayout(node) {
     // intermediate collapsed frame is never painted because both calls happen
     // before the next animation frame. No-op in the canvas renderer, which
     // already redraws from live widget.hidden on every frame.
-    if (typeof node.collapse === "function") {
-        node.collapse();
-        node.collapse();
+    // `force: true` is required or LGraphNode.collapse() silently no-ops on a
+    // pinned node (it returns early when `!collapsible && !force`), and
+    // `node.graph` is required because collapse() throws NullGraphError on a
+    // node that has not been added to a graph yet.
+    if (node.graph && typeof node.collapse === "function") {
+        node.collapse(true);
+        node.collapse(true);
     }
 }
 

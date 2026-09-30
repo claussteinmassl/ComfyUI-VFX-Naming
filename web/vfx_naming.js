@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import {
-    NODE_CLASS, PREVIEW_WIDGET, applyVisibility, loadSchemaFlags,
+    NODE_CLASS, PREVIEW_WIDGET, applyVisibility, classOf, loadSchemaFlags,
 } from "./vfx_widgets.js";
 
 // Grid stepping for the VFX Naming Convention node's numeric tokens.
@@ -263,8 +263,7 @@ app.registerExtension({
     },
 
     nodeCreated(node) {
-        const cls = node.comfyClass ?? node.constructor?.comfyClass;
-        if (cls !== NODE_CLASS || node.__vfxPreviewWatched) return;
+        if (classOf(node) !== NODE_CLASS || node.__vfxPreviewWatched) return;
         node.__vfxPreviewWatched = true;
 
         const widget = node.widgets?.find((w) => w.name === PREVIEW_WIDGET);
