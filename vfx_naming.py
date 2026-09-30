@@ -28,6 +28,7 @@ from comfy_api.latest import io
 from .naming_schema import (
     CUSTOM,
     NamingError,
+    OPTION_NAMES,
     load_schema,
     parse_custom_tokens,
     render,
@@ -160,9 +161,9 @@ def _token_tooltip(spec):
 
 
 def _schema_option(key):
-    """One entry of the schema dropdown: its label and its token fields."""
+    """One entry of the schema dropdown: its label and its visible token fields."""
     config = load_schema(key)
-    inputs = [_token_input(spec) for spec in config.tokens.values()]
+    inputs = [_token_input(spec) for spec in config.tokens.values() if spec.visible]
     return io.DynamicCombo.Option(key, inputs)
 
 
@@ -333,9 +334,22 @@ class VFXNamingConvention(io.ComfyNode):
         key = supplied.get("schema")
         config = load_schema(key)
 
+        # The schema may hide an option and fix its value.
+        options = config.effective_options({
+            "folders": folders, "strict": strict, "parent_path": parent_path,
+            "template_override": template_override,
+            "custom_tokens": custom_tokens,
+        })
+        folders, strict = options["folders"], options["strict"]
+        parent_path = options["parent_path"]
+        template_override = options["template_override"]
+        custom_tokens = options["custom_tokens"]
+
         values = {}
         for name, spec in config.tokens.items():
-            value, custom, layer = _token_values(spec, supplied.get(name))
+            # A hidden token has no widget; whatever arrives is ignored.
+            raw = supplied.get(name) if spec.visible else spec.initial()
+            value, custom, layer = _token_values(spec, raw)
             values[name] = spec.resolve(
                 value, strict, warnings, custom=custom, layer=layer,
             )
@@ -428,6 +442,35 @@ class VFXNamingConvention(io.ComfyNode):
         return "\n".join(lines)
 
 
+# --- Schema flags for the frontend -------------------------------------------
+
+SCHEMAS_ROUTE = "/vfx_naming/schemas"
+
+
+def schema_meta():
+    """Describe each schema's field flags for web/vfx_widgets.js.
+
+    Hidden tokens are left out - they have no widget to describe.
+
+    Returns:
+        A dict keyed by schema, each with `tokens` and `options` flag maps.
+    """
+    meta = {}
+    for key in schema_names():
+        config = load_schema(key)
+        options = {}
+        for name in OPTION_NAMES:
+            flags = config.option_flags(name)
+            options[name] = {"visible": flags["visible"],
+                             "overridable": flags["overridable"]}
+        meta[key] = {
+            "tokens": {name: {"overridable": spec.overridable}
+                       for name, spec in config.tokens.items() if spec.visible},
+            "options": options,
+        }
+    return meta
+
+
 # --- Live preview ------------------------------------------------------------
 #
 # The node shows its result while you type, which needs the values before the
@@ -499,8 +542,9 @@ def preview(widgets):
         return {"ok": False, "error": f"{type(error).__name__}: {error}"}
 
 
-def _register_preview_route():
-    """Expose `preview()` over HTTP when running inside a ComfyUI server."""
+def _register_routes():
+    """Expose `preview()` and `schema_meta()` over HTTP when running inside a
+    ComfyUI server."""
     try:
         from server import PromptServer
         from aiohttp import web
@@ -518,7 +562,14 @@ def _register_preview_route():
             body = {}
         return web.json_response(preview(body.get("widgets") or {}))
 
+    @instance.routes.get(SCHEMAS_ROUTE)
+    async def _schemas(request):
+        try:
+            return web.json_response(schema_meta())
+        except Exception as error:  # a broken schema must not break the server
+            return web.json_response({"error": str(error)}, status=500)
+
     return True
 
 
-PREVIEW_ROUTE_REGISTERED = _register_preview_route()
+ROUTES_REGISTERED = _register_routes()

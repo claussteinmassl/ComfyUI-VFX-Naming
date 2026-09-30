@@ -107,3 +107,74 @@ class TestOptionFlags(unittest.TestCase):
         for key in engine.schema_names():
             with self.subTest(schema=key):
                 engine.load_schema(key).option_flags("strict")
+
+
+FLAGGED = {
+    "label": "Flagged",
+    "tokens": {
+        "show": {"label": "Show", "charset": "alpha", "case": "upper",
+                 "length": 3, "default": "SHW", "overridable": False},
+        "task": {"label": "Task", "default": "comp", "presets": ["comp", "roto"]},
+        "mount": {"label": "Mount", "default": "/mnt/proj", "visible": False},
+        "version": {"label": "Version", "type": "int", "pad": 3, "prefix": "v",
+                    "default": 1},
+    },
+    "folders": ["{show}"],
+    "file": "{show}_{task}_{version}",
+    "root": ["{mount}"],
+    "options": {
+        "template_override": {"visible": False},
+        "strict": {"visible": False, "value": False},
+        "folders": {"overridable": False},
+    },
+}
+
+
+class FlaggedSchemaCase(unittest.TestCase):
+    """Runs each test with `schemas/` replaced by a folder holding FLAGGED."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        with open(os.path.join(self._tmp.name, "flagged.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(FLAGGED, handle)
+        patcher = mock.patch.object(engine, "SCHEMA_DIR", self._tmp.name)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self._tmp.cleanup)
+
+
+@needs_node
+class TestNodeFlags(FlaggedSchemaCase):
+
+    def test_a_hidden_token_has_no_widget(self):
+        option = node_pkg.vfx_naming._schema_option("flagged")
+        self.assertEqual([i.id for i in option.inputs], ["show", "task", "version"])
+
+    def test_a_hidden_token_renders_its_initial_value(self):
+        result = _named("flagged", {"mount": "/evil"})
+        self.assertTrue(result["directory"].startswith("/mnt/proj/"),
+                        result["directory"])
+
+    def test_a_hidden_option_uses_the_schema_value(self):
+        # strict is hidden and fixed to False, so dirt is repaired, not fatal.
+        result = _named("flagged", {"show": "sh!", "strict": True})
+        self.assertIn("SH", result["basename"])
+        self.assertIn("WARNINGS", result["report"])
+
+    def test_a_hidden_template_override_is_ignored(self):
+        result = _named("flagged", {"template_override": "{task}/{task}"})
+        self.assertEqual(result["basename"], "SHW_comp_v001")
+
+    def test_schema_meta_describes_the_flags(self):
+        meta = node_pkg.vfx_naming.schema_meta()["flagged"]
+        self.assertEqual(meta["tokens"], {
+            "show": {"overridable": False},
+            "task": {"overridable": True},
+            "version": {"overridable": True}})
+        self.assertEqual(meta["options"]["template_override"],
+                         {"visible": False, "overridable": False})
+        self.assertEqual(meta["options"]["folders"],
+                         {"visible": True, "overridable": False})
+        self.assertEqual(meta["options"]["parent_path"],
+                         {"visible": True, "overridable": True})
