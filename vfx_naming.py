@@ -21,6 +21,7 @@ Default schema:
 Reference: "VFX Naming Convention" paper by Victor Perez, VFX Supervisor.
 """
 
+import json
 import re
 
 from comfy_api.latest import io
@@ -28,6 +29,7 @@ from comfy_api.latest import io
 from .naming_schema import (
     CUSTOM,
     NamingError,
+    OPTION_DEFAULTS,
     OPTION_NAMES,
     load_schema,
     parse_custom_tokens,
@@ -39,6 +41,39 @@ from .naming_schema import (
 VFXNamingError = NamingError
 
 MAX_INT = 999999999
+
+# The naming pipe: one output that carries the inputs and the rendered result,
+# so a downstream naming node can inherit and a breakout node can unpack.
+PIPE = io.Custom("VFX_NAMING")
+PIPE_VERSION = 1
+
+# What a pipe's `result` holds, in the order the breakout node outputs it.
+RESULTS = (
+    ("filename_prefix", io.String,
+     "Connect to filename_prefix on Save Image / Save Image (Advanced) / "
+     "video savers."),
+    ("folder_name", io.String,
+     "Folder levels the schema renders (empty when there are none)."),
+    ("directory", io.String,
+     "Absolute folder, from the schema's 'root' levels (a mount point) plus "
+     "folder_name. Empty when the schema declares no root. For savers that "
+     "take a real path - ComfyUI's own reject one."),
+    ("full_path", io.String,
+     "directory + basename, without frame or extension. Empty when the schema "
+     "declares no root."),
+    ("basename", io.String, "Filename without frame number or extension."),
+    ("shot_id", io.String,
+     "The schema's shot identifier, empty when it declares no 'shot_id' "
+     "template."),
+    ("extension", io.String,
+     "File extension, lowercase and without a leading dot."),
+    ("example_filename", io.String,
+     "Fully formed example filename including frame and extension."),
+    ("first_frame", io.Int, "First frame of the work range."),
+    ("report", io.String,
+     "Human-readable breakdown plus any validation warnings."),
+)
+RESULT_NAMES = tuple(name for name, _, _ in RESULTS)
 
 
 def _sanitize_path(value, strict, warnings):
@@ -195,6 +230,99 @@ def _token_values(spec, supplied):
     )
 
 
+def build(key, tokens, options, notes=None, overridden=None):
+    """Render one name and wrap it, with the inputs it came from, as a pipe.
+
+    Args:
+        key: Schema key.
+        tokens: Raw per-token input, as the DynamicCombo delivers it.
+        options: The node options; missing ones take their defaults and the
+            ones the schema hides are fixed.
+        notes: Warnings raised before rendering, e.g. by an override merge.
+        overridden: Field names this node overrode on an incoming pipe, or
+            None when it received no pipe. Only used for the report.
+
+    Returns:
+        The pipe dict: version, schema, tokens, options and result.
+
+    Raises:
+        NamingError: If strict validation rejects a value or a template.
+    """
+    config = load_schema(key)
+    options = config.effective_options(options)
+    strict = options["strict"]
+    warnings = list(notes or [])
+
+    values = {}
+    for name, spec in config.tokens.items():
+        # A hidden token has no widget; whatever arrives is ignored. A token
+        # that is simply absent starts from its initial value, as a new node.
+        raw = tokens.get(name, spec.initial()) if spec.visible else spec.initial()
+        value, custom, layer = _token_values(spec, raw)
+        values[name] = spec.resolve(
+            value, strict, warnings, custom=custom, layer=layer,
+        )
+
+    # Extra tokens for the template; a matching name overrides its widget.
+    extras = parse_custom_tokens(options["custom_tokens"], strict)
+    for name, value in extras.items():
+        spec = config.tokens.get(name)
+        values[name] = spec.resolve(value, strict, warnings) if spec else value
+
+    config.apply_rules(values, warnings)
+
+    template_override = options["template_override"]
+    prefix_body, basename, unknown = config.render_prefix(
+        values,
+        include_folders=options["folders"],
+        override=template_override,
+        strict=strict,
+    )
+    if unknown and not strict:
+        warnings.append(
+            "Template refers to unknown token(s): "
+            + ", ".join("{" + n + "}" for n in unknown)
+            + " - rendered as empty."
+        )
+
+    parent = _sanitize_path(options["parent_path"], strict, warnings)
+    filename_prefix = "/".join(s for s in (parent, prefix_body) if s)
+    folder_name = "/".join(prefix_body.split("/")[:-1])
+    shot_id = config.render_shot_id(values)
+
+    # The absolute location, for savers that take a real path. `parent_path`
+    # is a sub-path of ComfyUI's output folder, so it plays no part here.
+    root = config.render_root(values)
+    directory = "/".join(s for s in (root, folder_name) if s) if root else ""
+    full_path = "/".join(s for s in (directory, basename) if s) if directory else ""
+    example_filename, _ = render(
+        config.filename, dict(values, basename=basename), strict=False,
+    )
+
+    # Two results name a token: a schema without 'ext' or 'frame' simply
+    # leaves them empty rather than failing.
+    extension = values.get("ext", "")
+    first_frame = _as_int(values.get("frame"), config.tokens.get("frame"))
+
+    report = VFXNamingConvention._report(
+        key, config, values, extras, template_override, shot_id,
+        folder_name, filename_prefix, example_filename, directory,
+        full_path, warnings, overridden,
+    )
+
+    result = dict(zip(RESULT_NAMES, (
+        filename_prefix, folder_name, directory, full_path, basename,
+        shot_id, extension, example_filename, first_frame, report,
+    )))
+    return {
+        "version": PIPE_VERSION,
+        "schema": key,
+        "tokens": {name: tokens.get(name) for name in config.tokens},
+        "options": options,
+        "result": result,
+    }
+
+
 # --- Node --------------------------------------------------------------------
 
 class VFXNamingConvention(io.ComfyNode):
@@ -209,7 +337,8 @@ class VFXNamingConvention(io.ComfyNode):
             description=(
                 "Build a VFX naming convention filename_prefix from a JSON "
                 "schema. The schema decides which fields this node shows:\n"
-                "<SHOW>_<SEQ>_<SHOT>_<TASK>_<VENDOR>_v<VERSION>.<FRAME>.<EXT>"
+                "<SHOW>_<SEQ>_<SHOT>_<TASK>_<VENDOR>_v<VERSION>.<FRAME>.<EXT>\n"
+                "Outputs a naming pipe: unpack it with VFX Naming Breakout."
             ),
             inputs=[
                 io.DynamicCombo.Input(
@@ -272,143 +401,28 @@ class VFXNamingConvention(io.ComfyNode):
                     ),
                 ),
             ],
-            outputs=[
-                io.String.Output(
-                    "filename_prefix",
-                    tooltip="Connect to filename_prefix on Save Image / Save "
-                            "Image (Advanced) / video savers.",
-                ),
-                io.String.Output(
-                    "folder_name",
-                    tooltip="Folder levels the schema renders (empty when "
-                            "there are none).",
-                ),
-                io.String.Output(
-                    "directory",
-                    tooltip="Absolute folder, from the schema's 'root' levels "
-                            "(a mount point) plus folder_name. Empty when the "
-                            "schema declares no root. For savers that take a "
-                            "real path - ComfyUI's own reject one.",
-                ),
-                io.String.Output(
-                    "full_path",
-                    tooltip="directory + basename, without frame or extension. "
-                            "Empty when the schema declares no root.",
-                ),
-                io.String.Output(
-                    "basename",
-                    tooltip="Filename without frame number or extension.",
-                ),
-                io.String.Output(
-                    "shot_id",
-                    tooltip="The schema's shot identifier, empty when it "
-                            "declares no 'shot_id' template.",
-                ),
-                io.String.Output(
-                    "extension",
-                    tooltip="File extension, lowercase and without a leading dot.",
-                ),
-                io.String.Output(
-                    "example_filename",
-                    tooltip="Fully formed example filename including frame and "
-                            "extension.",
-                ),
-                io.Int.Output(
-                    "first_frame",
-                    tooltip="First frame of the work range.",
-                ),
-                io.String.Output(
-                    "report",
-                    tooltip="Human-readable breakdown plus any validation "
-                            "warnings.",
-                ),
-            ],
+            outputs=[PIPE.Output("naming_pipe", tooltip="Everything this node "
+                "decided. Connect to a VFX Naming Breakout for filename_prefix "
+                "and the other values, or to another VFX Naming Convention to "
+                "inherit and override.")],
         )
 
     @classmethod
     def execute(cls, schema, folders=True, strict=True, parent_path="",
                 template_override="", custom_tokens="", preview=""):
-        warnings = []
         # The DynamicCombo hands over {"schema": key, <token>: value, ...}.
         supplied = schema if isinstance(schema, dict) else {"schema": str(schema)}
-        key = supplied.get("schema")
-        config = load_schema(key)
-
-        # The schema may hide an option and fix its value.
-        options = config.effective_options({
-            "folders": folders, "strict": strict, "parent_path": parent_path,
-            "template_override": template_override,
-            "custom_tokens": custom_tokens,
-        })
-        folders, strict = options["folders"], options["strict"]
-        parent_path = options["parent_path"]
-        template_override = options["template_override"]
-        custom_tokens = options["custom_tokens"]
-
-        values = {}
-        for name, spec in config.tokens.items():
-            # A hidden token has no widget; whatever arrives is ignored.
-            raw = supplied.get(name) if spec.visible else spec.initial()
-            value, custom, layer = _token_values(spec, raw)
-            values[name] = spec.resolve(
-                value, strict, warnings, custom=custom, layer=layer,
-            )
-
-        # Extra tokens for the template; a matching name overrides its widget.
-        extras = parse_custom_tokens(custom_tokens, strict)
-        for name, value in extras.items():
-            spec = config.tokens.get(name)
-            values[name] = spec.resolve(value, strict, warnings) if spec else value
-
-        config.apply_rules(values, warnings)
-
-        prefix_body, basename, unknown = config.render_prefix(
-            values,
-            include_folders=folders,
-            override=template_override,
-            strict=strict,
-        )
-        if unknown and not strict:
-            warnings.append(
-                "Template refers to unknown token(s): "
-                + ", ".join("{" + n + "}" for n in unknown)
-                + " - rendered as empty."
-            )
-
-        parent = _sanitize_path(parent_path, strict, warnings)
-        filename_prefix = "/".join(s for s in (parent, prefix_body) if s)
-        folder_name = "/".join(prefix_body.split("/")[:-1])
-        shot_id = config.render_shot_id(values)
-
-        # The absolute location, for savers that take a real path. `parent_path`
-        # is a sub-path of ComfyUI's output folder, so it plays no part here.
-        root = config.render_root(values)
-        directory = "/".join(s for s in (root, folder_name) if s) if root else ""
-        full_path = "/".join(s for s in (directory, basename) if s) if directory else ""
-        example_filename, _ = render(
-            config.filename, dict(values, basename=basename), strict=False,
-        )
-
-        # Two outputs name a token: a schema without 'ext' or 'frame' simply
-        # leaves them empty rather than failing.
-        extension = values.get("ext", "")
-        first_frame = _as_int(values.get("frame"), config.tokens.get("frame"))
-
-        report = cls._report(
-            key, config, values, extras, template_override, shot_id,
-            folder_name, filename_prefix, example_filename, directory,
-            full_path, warnings,
-        )
-
-        return io.NodeOutput(
-            filename_prefix, folder_name, directory, full_path, basename,
-            shot_id, extension, example_filename, first_frame, report,
-        )
+        tokens = {k: v for k, v in supplied.items() if k != "schema"}
+        options = {"folders": folders, "strict": strict,
+                   "parent_path": parent_path,
+                   "template_override": template_override,
+                   "custom_tokens": custom_tokens}
+        return io.NodeOutput(build(supplied.get("schema"), tokens, options))
 
     @staticmethod
     def _report(key, config, values, extras, template_override, shot_id,
                 folder_name, filename_prefix, example_filename, directory,
-                full_path, warnings):
+                full_path, warnings, overridden=None):
         """Break the result down in the schema's own vocabulary."""
         lines = [f"SCHEMA: {config.label}  ({key})"]
         if config.description:
@@ -432,6 +446,10 @@ class VFXNamingConvention(io.ComfyNode):
             f"  {'Prefix':<{width}} : {filename_prefix}",
             f"  {'Example file':<{width}} : {example_filename}",
         ]
+        if overridden is not None:
+            lines.append(
+                f"  {'Overrides':<{width}} : "
+                + (", ".join(overridden) if overridden else "- (all inherited)"))
         if directory:
             lines += [
                 f"  {'Directory':<{width}} : {directory}",
@@ -523,9 +541,8 @@ def preview(widgets):
         # Permissive: a half-typed value should show a preview, not an error.
         options["strict"] = False
 
-        result = VFXNamingConvention.execute(schema=supplied, **options).result
-        names = [o.display_name for o in VFXNamingConvention.define_schema().outputs]
-        fields = dict(zip(names, result))
+        pipe = VFXNamingConvention.execute(schema=supplied, **options).result[0]
+        fields = pipe["result"]
 
         rows = [("prefix", "filename_prefix"), ("example", "example_filename"),
                 ("directory", "directory"), ("full path", "full_path")]

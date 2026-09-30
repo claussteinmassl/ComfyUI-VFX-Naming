@@ -305,7 +305,7 @@ TOP_LEVEL = {"folders", "strict", "parent_path", "template_override", "custom_to
 
 
 def _call(schema_key, case):
-    """Run the node the way ComfyUI would, from a flat case description."""
+    """Run the node the way ComfyUI would; return the ten results in order."""
     settings = dict(BASE, **case)
     top = {k: settings.pop(k) for k in list(settings) if k in TOP_LEVEL}
 
@@ -324,14 +324,13 @@ def _call(schema_key, case):
             supplied[name] = settings.get(name, spec.initial())
 
     Node = node_pkg.vfx_naming.VFXNamingConvention
-    return Node.execute(schema=supplied, **top).result
+    pipe = Node.execute(schema=supplied, **top).result[0]
+    return tuple(pipe["result"][n] for n in node_pkg.vfx_naming.RESULT_NAMES)
 
 
 def _named(schema_key, case):
-    """Run the node and label the outputs the way the node names them."""
-    Node = node_pkg.vfx_naming.VFXNamingConvention
-    names = [o.display_name for o in Node.define_schema().outputs]
-    return dict(zip(names, _call(schema_key, case)))
+    """Run the node and label the results the way the breakout names them."""
+    return dict(zip(node_pkg.vfx_naming.RESULT_NAMES, _call(schema_key, case)))
 
 
 @needs_node
@@ -480,12 +479,8 @@ class TestRegistration(unittest.TestCase):
 
     def test_the_v1_node_info_is_complete(self):
         info = node_pkg.vfx_naming.VFXNamingConvention.GET_NODE_INFO_V1()
-        self.assertEqual(
-            list(info["output_name"]),
-            ["filename_prefix", "folder_name", "directory", "full_path",
-             "basename", "shot_id", "extension", "example_filename",
-             "first_frame", "report"],
-        )
+        self.assertEqual(list(info["output_name"]), ["naming_pipe"])
+        self.assertEqual(list(info["output"]), ["VFX_NAMING"])
         self.assertEqual(list(info["input"]["required"]),
                          ["schema", "folders", "strict"])
         self.assertEqual(
@@ -588,6 +583,15 @@ class TestNodeBehaviour(unittest.TestCase):
             self.assertIn(label, report)
         self.assertNotIn("Sequence code", report)
         self.assertNotIn("Vendor", report)
+
+    def test_build_renders_a_pipe(self):
+        pipe = node_pkg.vfx_naming.build("vfx_default", {}, {})
+        self.assertEqual(pipe["version"], 1)
+        self.assertEqual(pipe["schema"], "vfx_default")
+        self.assertEqual(list(pipe["result"]), list(node_pkg.vfx_naming.RESULT_NAMES))
+        self.assertEqual(pipe["result"]["filename_prefix"],
+                         "SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001")
+        self.assertEqual(pipe["options"]["strict"], True)
 
 
 class TestOsDefaults(unittest.TestCase):
