@@ -39,17 +39,44 @@ const MAX_HOPS = 32;
 // rebuild has not created (yet). A preset without them never creates them.
 const RESTORE_PASSES = 4;
 
-/** The naming node that feeds this one, following legacy Reroute nodes. */
+/**
+ * The naming node that feeds this one. Passes through legacy Reroute nodes
+ * and virtual nodes such as KJNodes' Get/Set pair, which are linked by name
+ * rather than by a wire: those resolve their source the same way the
+ * frontend does when it builds the prompt, through `resolveVirtualOutput()`
+ * (a source in another graph) or `getInputLink()` (the same graph).
+ */
 export function upstreamOf(node) {
     const slot = node.inputs?.findIndex((input) => input.name === PIPE_INPUT) ?? -1;
     if (slot < 0 || node.inputs[slot].link == null) return { linked: false, source: null };
+    let link = node.graph?.links?.get?.(node.inputs[slot].link)
+        ?? node.graph?.links?.[node.inputs[slot].link];
     let source = node.getInputNode(slot);
     for (let hops = 0; source && classOf(source) !== NODE_CLASS && hops < MAX_HOPS; hops++) {
-        if (source.type !== "Reroute") break;
-        source = source.getInputNode(0);
+        if (source.type === "Reroute") {
+            link = null;
+            source = source.getInputNode(0);
+        } else if (source.isVirtualNode) {
+            ({ source, link } = throughVirtual(source, link?.origin_slot ?? 0));
+        } else {
+            break;
+        }
     }
     const found = classOf(source) === NODE_CLASS && source !== node;
     return { linked: true, source: found ? source : null };
+}
+
+/** Follow a virtual node's output back to the node that really feeds it. */
+function throughVirtual(virtual, outputSlot) {
+    const none = { source: null, link: null };
+    // Ask a Get node for its setter first, so a missing one is not reported
+    // by getInputLink() on every tick.
+    if (typeof virtual.findSetter === "function" && !virtual.findSetter(virtual.graph)) return none;
+    const remote = virtual.resolveVirtualOutput?.(outputSlot);
+    if (remote?.node) return { source: remote.node, link: { origin_slot: remote.slot ?? 0 } };
+    const link = virtual.getInputLink?.(outputSlot);
+    if (!link) return none;
+    return { source: virtual.graph?.getNodeById?.(link.origin_id) ?? null, link };
 }
 
 export function readOverrides(node) {
