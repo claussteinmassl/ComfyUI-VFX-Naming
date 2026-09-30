@@ -42,6 +42,10 @@ Token configuration
     layer_pad      digits for that layer number (default 2)
     os             per-platform starting value, keyed windows / macos / linux;
                    the one for the running machine wins over `default`
+    visible        false: the node shows no field and always renders the
+                   token's starting value (default true)
+    overridable    false: a node that receives a naming pipe always inherits
+                   this token and cannot override it (default true)
 
 A value picked from `presets` was written by the schema author, so it is taken
 verbatim - `charset`, `case`, `length` and `pattern` do not touch it. That is
@@ -60,6 +64,13 @@ Schema templates
                    point. These feed the absolute outputs only - filename_prefix
                    stays relative, because ComfyUI's own savers reject anything
                    outside the output folder.
+
+Node options
+------------
+    options        per-input flags for folders, strict, parent_path,
+                   template_override and custom_tokens: {"visible": false,
+                   "value": ...} hides the input and fixes its value,
+                   {"overridable": false} locks it against downstream overrides
 """
 
 import json
@@ -74,6 +85,44 @@ PAD_MOD_RE = re.compile(r"^0?(\d+)$")
 
 # The dropdown entry that reveals a token's free-text field.
 CUSTOM = "(custom)"
+
+# The node's inputs that are not tokens. A schema's `options` block may hide
+# them or lock them against downstream overrides; a token may not share a name
+# with one, because an override list could not tell the two apart.
+OPTION_NAMES = ("folders", "strict", "parent_path", "template_override",
+                "custom_tokens")
+
+# What each option is when the node supplies nothing - and what a hidden option
+# is fixed to unless the schema names a `value`.
+OPTION_DEFAULTS = {
+    "folders": True,
+    "strict": True,
+    "parent_path": "",
+    "template_override": "",
+    "custom_tokens": "",
+}
+
+OPTION_FLAG_KEYS = ("visible", "overridable", "value")
+
+
+def _flag(config, key, where):
+    """Read a boolean flag that defaults to true.
+
+    Args:
+        config: The token or option configuration.
+        key: The flag to read.
+        where: What the configuration belongs to, for the error message.
+
+    Returns:
+        The flag's value.
+
+    Raises:
+        NamingError: If the flag is present but not a boolean.
+    """
+    value = config.get(key, True)
+    if not isinstance(value, bool):
+        raise NamingError(f"{where}: '{key}' must be true or false (got {value!r}).")
+    return value
 
 
 def _current_os():
@@ -240,6 +289,12 @@ class TokenSpec:
         self.layer_pad = int(config.get("layer_pad", 2))
         # Per-OS starting values, e.g. a mount point that differs per platform.
         self.os_defaults = config.get("os") or {}
+
+        # Whether the node shows the token at all, and whether a node that
+        # receives a pipe may override it. A hidden token always renders its
+        # initial value, so there is nothing to override.
+        self.visible = _flag(config, "visible", f"Token '{name}'")
+        self.overridable = self.visible and _flag(config, "overridable", f"Token '{name}'")
 
         # Characters kept on top of `charset`, e.g. "-" to separate words. Only
         # meaningful for characters the schema does not use as a delimiter.
@@ -437,8 +492,69 @@ class Schema:
         self.root = list(data.get("root") or [])
         self.rules = list(data.get("rules") or [])
 
+        clash = sorted(set(self.tokens) & set(OPTION_NAMES))
+        if clash:
+            raise NamingError(
+                f"Schema '{key}': token name(s) {', '.join(clash)} clash with "
+                "the node's own inputs - rename the token.")
+        self._options = self._read_options(key, data.get("options") or {})
+
     def spec(self, name):
         return self.tokens.get(name) or TokenSpec(name, {"optional": True})
+
+    @staticmethod
+    def _read_options(key, block):
+        """Validate the schema's `options` block and fill in the defaults."""
+        unknown = sorted(set(block) - set(OPTION_NAMES))
+        if unknown:
+            raise NamingError(
+                f"Schema '{key}': unknown option(s) {', '.join(unknown)} in "
+                f"'options'. Known: {', '.join(OPTION_NAMES)}.")
+        flags = {}
+        for name in OPTION_NAMES:
+            config = block.get(name) or {}
+            stray = sorted(set(config) - set(OPTION_FLAG_KEYS))
+            if stray:
+                raise NamingError(
+                    f"Schema '{key}': option '{name}' has unknown key(s) "
+                    f"{', '.join(stray)}. Known: {', '.join(OPTION_FLAG_KEYS)}.")
+            where = f"Schema '{key}', option '{name}'"
+            visible = _flag(config, "visible", where)
+            flags[name] = {
+                "visible": visible,
+                "overridable": visible and _flag(config, "overridable", where),
+                "value": config.get("value", OPTION_DEFAULTS[name]),
+            }
+        return flags
+
+    def option_flags(self, name):
+        """How this schema offers one of the node's options.
+
+        Args:
+            name: One of `OPTION_NAMES`.
+
+        Returns:
+            A dict with `visible`, `overridable` and `value`.
+        """
+        return dict(self._options[name])
+
+    def effective_options(self, supplied):
+        """Resolve the node's options, fixing the ones this schema hides.
+
+        Args:
+            supplied: Option values from the node; missing ones use defaults.
+
+        Returns:
+            A dict with every name in `OPTION_NAMES`.
+        """
+        result = {}
+        for name in OPTION_NAMES:
+            flags = self._options[name]
+            if flags["visible"]:
+                result[name] = supplied.get(name, OPTION_DEFAULTS[name])
+            else:
+                result[name] = flags["value"]
+        return result
 
     def apply_rules(self, values, notes):
         """Drop tokens that the schema says cannot coexist (e.g. plates + vendor)."""
