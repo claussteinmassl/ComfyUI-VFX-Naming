@@ -1,0 +1,116 @@
+{
+  "label": "Studio (show/02_wip/shots)",
+  "description": "show/02_wip/shots/shSHOT/task_variant/out/shSHOT_task_variant_vVERSION_colorspace_frame. Tasks cover AI generation work only. 'variant' refines the task and is never empty - 'main' for ordinary work, the pass name under 'aov' - so every name splits into the same components. The show code is kept verbatim, everything else is lower case. The mount point defaults per operating system and feeds the absolute path outputs.",
+  "tokens": {
+    "show": {
+      "label": "Show code",
+      "charset": "any",
+      "default": "SHOW"
+    },
+    "shot": {
+      "label": "Shot number",
+      "type": "int",
+      "pad": 3,
+      "prefix": "sh",
+      "default": 10,
+      "step": 10
+    },
+    "task": {
+      "label": "Task",
+      "charset": "alnum",
+      "case": "lower",
+      "default": "imggen",
+      "presets": [
+        "imggen",
+        "vidgen",
+        "audgen",
+        "3dgen",
+        "retouch",
+        "restyle",
+        "relight",
+        "roto",
+        "aov",
+        "upscale",
+        "interp"
+      ],
+      "allow_custom": true,
+      "allow": "-"
+    },
+    "variant": {
+      "label": "Variant",
+      "charset": "alnum",
+      "case": "lower",
+      "default": "main",
+      "allow": "-"
+    },
+    "version": {
+      "label": "Version",
+      "type": "int",
+      "pad": 3,
+      "prefix": "v",
+      "default": 1
+    },
+    "colorspace": {
+      "label": "Colorspace",
+      "charset": "alnum",
+      "case": "lower",
+      "default": "rec709",
+      "presets": [
+        "rec709",
+        "acescg"
+      ],
+      "allow_custom": false
+    },
+    "frame": {
+      "label": "First frame",
+      "type": "int",
+      "pad": 4,
+      "default": 1001
+    },
+    "ext": {
+      "label": "Extension",
+      "charset": "alnum",
+      "case": "lower",
+      "default": "exr",
+      "presets": [
+        "exr",
+        "png",
+        "tif",
+        "tiff",
+        "jpg",
+        "dpx",
+        "webp",
+        "mov",
+        "mp4",
+        "mxf",
+        "cube",
+        "cdl"
+      ],
+      "allow_custom": true
+    },
+    "mount": {
+      "label": "Mount point",
+      "charset": "any",
+      "optional": true,
+      "os": {
+        "windows": "C:/projects",
+        "macos": "/Volumes/projects",
+        "linux": "/mnt/projects"
+      }
+    }
+  },
+  "root": [
+    "{mount}"
+  ],
+  "folders": [
+    "{show}",
+    "02_wip",
+    "shots",
+    "{shot}",
+    "{task}_{variant}",
+    "out"
+  ],
+  "file": "{shot}_{task}_{variant}_{version}_{colorspace}_{frame}",
+  "filename": "{basename}.{frame}.{ext}",
+  "shot_id": "{shot}"
+}

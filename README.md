@@ -92,6 +92,10 @@ For complete and approved VFX shots — marked as *Final* — the status in the
 SHW_SEQ_0030_FINAL_vnd_v012.1234.exr
 ```
 
+> `FINAL` is **not** among the shipped presets. Add it to your schema's `task`
+> presets if you use it — a preset is taken verbatim, so it keeps its uppercase
+> even though the token is otherwise lowercase.
+
 ### Folder structure
 
 File sequences must be contained in folders named after the Shot ID and the
@@ -168,23 +172,37 @@ A 44 frame shot therefore runs 1001–1064:
 
 ### Inputs
 
+**The schema decides which fields this node shows.** Picking a schema swaps the
+token fields for the ones that schema declares — there is no fixed list of
+widgets, and none of the token names below are known to the Python code.
+
 | Input | Purpose |
 |---|---|
-| `show_code`, `sequence_code` | 3-letter codes, auto-uppercased |
-| `shot_number` | arrows snap to the nearest shot ending in 0; any number can be typed; padded to `shot_padding` |
-| `task` | dropdown of task codes, plate types, `FINAL`, or `(custom)` |
-| `task_custom` | free task code, used when `task` is `(custom)` |
-| `plate_layer` | `0` = none; `2` turns `bg` into `bg02` |
-| `vendor_id` | 3 letters; **leave empty for lab plates** |
-| `version` | padded to `version_padding` |
-| `sequence_subfolder` | on = `basename/basename`, off = `basename` |
-| `parent_path` | optional sub-path, e.g. `SHW/SEQ` or `%date:yyyy-MM-dd%` |
-| `first_frame` | work-range head; convention is `1001` (10 head + 10 tail handles) |
-| `file_extension` | drives the `extension` and `example_filename` outputs |
+| `schema` | which JSON schema in `schemas/` to render — and therefore which fields appear below it |
+| `folders` | on = render the schema's folder levels, off = files straight into the output folder |
 | `strict` | on = abort on any violation; off = auto-correct and warn |
-| `schema` | which JSON schema in `schemas/` to render |
-| `template_override` | override the schema's template for this node only |
-| `custom_tokens` | extra `name=value` tokens available to the template |
+| `parent_path` | optional sub-path, e.g. `SHW/SEQ` or `%date:yyyy-MM-dd%` |
+| `template_override` | override the schema's templates for this node only |
+| `custom_tokens` | extra `name=value` tokens for the template; a name matching a token above overrides it |
+| `preview` | read-only: the assembled result, refreshed as you type |
+
+With `vfx_default` selected, the token fields are:
+
+| Field | Purpose |
+|---|---|
+| `show`, `seq` | 3-letter codes, auto-uppercased |
+| `shot` | arrows snap to the nearest shot ending in 0; any number can be typed |
+| `task` | dropdown of task codes and plate types, plus `(custom)` |
+| `task_custom` | free task code; appears only when `task` is `(custom)` |
+| `task_layer` | appears only on a plate preset — `2` turns `bg` into `bg02` |
+| `vendor` | 3 letters; **leave empty for lab plates** |
+| `version` | zero padded, `v` prefixed |
+| `frame` | work-range head; convention is `1001` (10 head + 10 tail handles) |
+| `ext` | dropdown of extensions, plus `(custom)` |
+
+Pick `studio` instead and `seq`, `vendor` and `task_layer` are gone, while a
+`colorspace` dropdown appears. A field shared by both schemas keeps its value
+across the switch.
 
 ### Outputs
 
@@ -192,8 +210,10 @@ A 44 frame shot therefore runs 1001–1064:
 |---|---|
 | `filename_prefix` | `SHW_SEQ_0010_comp_vnd_v001/SHW_SEQ_0010_comp_vnd_v001` |
 | `folder_name` | `SHW_SEQ_0010_comp_vnd_v001` |
+| `directory` | `/Volumes/projects/Atlas/02_wip/shots/sh010/aov_depth/out` — absolute, empty unless the schema declares a `root` |
+| `full_path` | `directory` + `basename`, without frame or extension |
 | `basename` | `SHW_SEQ_0010_comp_vnd_v001` |
-| `shot_id` | `SHW_SEQ_0010` |
+| `shot_id` | `SHW_SEQ_0010` — from the schema's `shot_id` template, empty when it declares none |
 | `extension` | `exr` (lowercase, no leading dot) |
 | `example_filename` | `SHW_SEQ_0010_comp_vnd_v001.1001.exr` |
 | `first_frame` | `1001` (INT — feed frame-range inputs) |
@@ -206,11 +226,13 @@ from this node's output onto the widget in recent frontends).
 ## Schemas — the convention is configuration
 
 No naming rule is hardcoded in the logic. Which tokens exist, how each one is
-cased, padded and validated, the delimiters, the order of the tokens and how
-many folder levels they render into all live in JSON under [`schemas/`](schemas).
-`naming_schema.py` is only the engine that loads and renders them.
+cased, padded and validated, the delimiters, the order of the tokens, how many
+folder levels they render into **and how each token is offered in the node** all
+live in JSON under [`schemas/`](schemas). `naming_schema.py` is only the engine
+that loads and renders them; `vfx_naming.py` contains no token name and no token
+vocabulary at all.
 
-Pick one with the `schema` widget. Four ship with the node:
+Pick one with the `schema` widget. Five ship with the node:
 
 | Schema | Renders |
 |---|---|
@@ -218,6 +240,36 @@ Pick one with the `schema` widget. Four ship with the node:
 | `vfx_flat` | `SHW_SEQ_0010_comp_vnd_v001` (no sequence folder) |
 | `studio_nested` | `SHW/SEQ/0010/comp-vnd/v001-0010-comp-vnd` |
 | `episodic_dotted` | `SHW/ep101/SEQ.0010/SHW.SEQ.0010.comp.vp.v001` |
+| `studio` | `Atlas/02_wip/shots/sh010/imggen_main/out/sh010_imggen_main_v001_acescg_1001` |
+
+`studio` is a worked example of how far a schema can depart from the
+default: the show code is kept verbatim rather than uppercased, shots read
+`sh010` instead of `0010`, there is no sequence and no vendor, and a
+`colorspace` token exists that no other schema has — with `rec709` and `acescg`
+as its only accepted values. It is also the one that declares a `root`, so it
+fills the absolute path outputs; see **Absolute paths and the mount point**.
+
+Its task list covers **AI generation work only**, since that is what ComfyUI
+produces — the paper's `comp`/`layt`/`anim` vocabulary and the lab plates stay
+in the other four schemas, where they belong:
+
+```
+imggen  vidgen  audgen  3dgen  retouch  restyle  relight  roto  aov  upscale  interp
+```
+
+Alongside `task` it carries a **`variant`** token that refines it, and which is
+never empty — `main` for ordinary work, the pass name under `aov`:
+
+```
+shots/sh010/imggen_main/out/sh010_imggen_main_v001_acescg_1001.1001.exr
+shots/sh010/aov_depth/out/sh010_aov_depth_v001_acescg_1001.1001.exr
+shots/sh010/aov_normal/out/sh010_aov_normal_v001_acescg_1001.1001.exr
+shots/sh010/roto_hair/out/sh010_roto_hair_v001_acescg_1001.1001.exr
+```
+
+`main` in every ordinary name is deliberate: a component that is sometimes
+present and sometimes not cannot be parsed back reliably, so `variant` always
+occupies its slot and every name splits into the same components.
 
 ### Writing your own
 
@@ -228,26 +280,72 @@ Drop a JSON file in `schemas/` and it appears in the dropdown after a restart:
   "label": "My studio",
   "tokens": {
     "show":    {"label": "Show code", "charset": "alpha", "case": "upper", "length": 4},
-    "shot":    {"label": "Shot", "type": "int", "pad": 3},
-    "version": {"label": "Version", "type": "int", "pad": 2, "prefix": "V"}
+    "shot":    {"label": "Shot", "type": "int", "pad": 3, "default": 10, "step": 10},
+    "stage":   {"label": "Stage", "charset": "alnum", "case": "lower",
+                "presets": ["previz", "postviz", "final"], "default": "previz",
+                "allow_custom": false},
+    "version": {"label": "Version", "type": "int", "pad": 2, "prefix": "V", "default": 1}
   },
-  "folders": ["{show}", "{seq}"],
-  "file": "{show}-{shot}[-{vendor}]-{version}",
+  "folders": ["{show}", "{stage}"],
+  "file": "{show}-{shot}-{stage}-{version}",
   "filename": "{basename}.{frame}.{ext}",
-  "rules": [
-    {"when": {"token": "task", "matches": "(mp|bg|fg|el|cp|rp)\\d*"},
-     "omit": ["vendor"], "note": "Lab plates carry no vendor id"}
-  ]
+  "shot_id": "{show}-{shot}"
 }
 ```
 
-**Token specs** — `charset` (`alpha` / `alnum` / `any`), `case` (`upper` /
-`lower`), `length` for an exact character count, `type: "int"` with `pad`,
-`prefix` (the `v` in `v001`), `pattern` for an extra regex check, and
-`optional: true` to allow it to be empty.
+**Token specs** — `charset` (`alpha` / `alnum` / `any`), `allow` for extra
+characters on top of it, `case` (`upper` / `lower`), `length` for an exact
+character count, `type: "int"` with `pad`, `prefix` (the `v` in `v001`),
+`pattern` for an extra regex check, and `optional: true` to allow it to be
+empty.
+
+`allow` is how a token gets a word separator:
+
+```json
+"variant": { "charset": "alnum", "case": "lower", "allow": "-" }
+```
+
+```
+hair-fine   ->  hair-fine     kept
+hair_fine   ->  hairfine      stripped, with a warning
+hair!fine   ->  hairfine      stripped, with a warning
+```
+
+> **Never list a character the schema uses as a delimiter.** `studio` joins its
+> components with `_`, so `-` is safe there and `_` is not. `studio_nested`
+> joins with `-`, so the reverse holds. A delimiter inside a token forges a
+> component boundary and the name stops being parseable — which is the whole
+> point of having a convention.
+
+**How a token is offered** — every token becomes a field in the node, in the
+order it appears in the file:
+
+| Field | Effect |
+|---|---|
+| `presets` | list of values → the token renders as a dropdown instead of a text box |
+| `allow_custom` | default `true`; adds a `(custom)` entry that reveals a free-text field. Set `false` and the presets are the only accepted values |
+| `default` | the field's starting value |
+| `step` | spinner increment for an `int` token |
+| `layer_pattern` | presets matching this regex reveal a layer number that is appended: `bg` + `2` → `bg02` |
+| `layer_pad` | digits for that layer number (default `2`) |
+| `os` | per-platform starting value, keyed `windows` / `macos` / `linux`; the entry for the running machine beats `default` |
+
+**A preset is taken verbatim.** It was written by the schema author, so
+`charset`, `case`, `length` and `pattern` do not touch it — which is how a
+lowercase token can still offer an uppercase preset like `FINAL`. Text typed
+into a `(custom)` field takes the normal route and is cleaned and checked.
+
+> **After changing a schema's token list, delete and re-add the node.** ComfyUI
+> stores widget values by position, so a node already on the canvas keeps the
+> old field order and a value further down slides into the new token. A reload
+> is not enough — the node in the graph keeps its widget list. The node refuses
+> a true/false value with an explanatory warning rather than building a path out
+> of it, which is how this announces itself.
 
 **Templates** — `folders` is a list of path levels (any depth), `file` is the
-basename, `filename` is the full name used for the `example_filename` output.
+basename, `filename` is the full name used for the `example_filename` output,
+`shot_id` feeds the output of the same name, and `root` holds the levels that
+sit *above* `folders` on disk — see below.
 
 | Syntax | Meaning |
 |---|---|
@@ -278,6 +376,81 @@ episode=101
 artist=vp
 ```
 
+## Absolute paths and the mount point
+
+Everything above is relative to ComfyUI's `output/` folder, because that is all
+`filename_prefix` can ever be — see the next section. Plenty of savers do take a
+real path, though, so a schema can also declare **where it sits on disk**:
+
+```json
+"tokens": {
+  "mount": {
+    "label": "Mount point",
+    "charset": "any",
+    "optional": true,
+    "os": {
+      "windows": "C:/projects",
+      "macos":   "/Volumes/projects",
+      "linux":   "/mnt/projects"
+    }
+  }
+},
+"root": ["{mount}"]
+```
+
+`root` is a list of path levels like `folders`, but they sit *above* it. They
+feed two outputs and nothing else:
+
+```
+filename_prefix : Atlas/02_wip/shots/sh010/aov_depth/out/sh010_aov_depth_v001_acescg_1001
+directory       : /Volumes/projects/Atlas/02_wip/shots/sh010/aov_depth/out
+full_path       : /Volumes/projects/Atlas/.../out/sh010_aov_depth_v001_acescg_1001
+```
+
+So one node feeds both kinds of saver: `filename_prefix` for ComfyUI's own,
+`directory` + `basename` for one that writes wherever you point it. There is no
+mode switch — both are always available, and `filename_prefix` never becomes
+absolute behind your back.
+
+`mount` is an ordinary token, so it is a normal field in the node and can be
+overridden per node. What makes it useful is `os`: the node reads the entry for
+the machine ComfyUI is running on, so the same schema resolves to
+`/Volumes/projects` on a Mac and `C:/projects` on Windows. Detection is
+automatic and there is no override — set the field by hand to build a path for
+another platform.
+
+Forward slashes throughout, including on Windows. Windows accepts them
+everywhere and VFX pipelines use them by convention.
+
+`parent_path` plays no part here: it is a sub-path *inside* ComfyUI's output
+folder, which is a relative-mode idea. A schema that declares no `root` leaves
+`directory` and `full_path` empty rather than quietly handing back a relative
+path.
+
+## Live preview
+
+The node shows the assembled result while you type — no run needed:
+
+```
+prefix    : Atlas/02_wip/shots/sh010/aov_depth/out/sh010_aov_depth_v003_acescg_1001
+example   : sh010_aov_depth_v003_acescg_1001.1001.exr
+directory : /Volumes/projects/Atlas/02_wip/shots/sh010/aov_depth/out
+full path : /Volumes/projects/Atlas/.../out/sh010_aov_depth_v003_acescg_1001
+
+! Show code must be exactly 3 characters (got 'SH', 2).
+```
+
+Warnings appear as you go, so a value that breaks the convention shows up
+immediately instead of at execution time. The preview is always evaluated
+permissively — a half-typed value still renders, whatever `strict` is set to;
+`strict` still governs the real run.
+
+The naming rules are **not** reimplemented in JavaScript. `web/vfx_naming.js`
+posts the current widget values to `/vfx_naming/preview` and displays whatever
+Python renders, so there is only ever one interpretation of a schema. If the
+extension fails to load or the route is unavailable, the preview field stays
+empty and everything else works as before.
+
 ## Important: what ComfyUI appends
 
 ComfyUI's own savers always append their own counter and extension:
@@ -303,13 +476,23 @@ frame token itself — that is a separate node, not something a prefix string ca
 do. `extension`, `example_filename` and `first_frame` are provided so you can
 drive one, or feed the format widget of a saver that accepts a string.
 
+**Absolute paths are rejected outright**, not silently made relative:
+
+```python
+if not is_within_directory(output_dir, full_output_folder):   # folder_paths.py
+    raise Exception("**** ERROR: Saving image outside the output folder is not allowed.")
+```
+
+That is why `filename_prefix` stays relative no matter what and the absolute
+path is a separate output — see **Absolute paths and the mount point**.
+
 ## Shot number stepping
 
-The +/- buttons move the shot number in tens, matching the convention,
-but **any** number can be typed in manually — `15`, `125`, `7`. Off-grid values
-are accepted even in strict mode; they only add an advisory note to the
-`report` output. (The convention's own example `SHW_SEQ_0125_prev_vnd_v001` is
-off-grid.)
+A schema declares the increment with `"step": 10` on an int token. The +/-
+buttons then move the shot number in tens, matching the convention, but **any**
+number can be typed in manually — `15`, `125`, `7`. Off-grid values are accepted
+even in strict mode; they only add an advisory note to the `report` output. (The
+convention's own example `SHW_SEQ_0125_prev_vnd_v001` is off-grid.)
 
 Pressing +/- always lands on the nearest shot number ending in 0, in the
 direction pressed — from 98, `+` goes to 100 and `-` goes to 90, rather than
@@ -318,8 +501,11 @@ dragging the off-grid number along to 108. On-grid values step normally
 
 Both behaviours need the bundled `web/vfx_naming.js`. ComfyUI's INT widget uses
 one option (`step2`) for both the increment and for snapping committed values
-onto that grid, so a plain `"step": 10` would round a typed 15 up to 20. Python
-declares step 1 (always free to type), and the extension supplies the stepping.
+onto that grid, so a plain `"step": 10` would round a typed 15 up to 20. The
+extension supplies the stepping instead, and finds the widgets to apply it to
+through the `vfxGridStep` option the node attaches to any int token whose schema
+declares a step — the token can be named anything, and the `schema` dropdown
+creates and destroys these widgets as you switch.
 
 With `Comfy.VueNodes` enabled the widget renders as a DOM component whose +/-
 buttons do `model = clamp(model +/- step)` and commit by calling
@@ -332,8 +518,9 @@ redirects an armed change onto the grid as a safety net — which is also what
 makes the keyboard Up/Down arrows snap, since no re-render happens between
 keydown and the component's handler.
 
-Verified against a live ComfyUI 1.49.6: 20 stepping cases, free-form typing,
-and no effect on the node's other INT widgets or on other nodes.
+The mechanism was verified against a live ComfyUI 1.49.6 — 20 stepping cases,
+free-form typing, and no effect on other INT widgets or other nodes — before it
+was retargeted from a fixed widget name to the `vfxGridStep` option in 2.0.
 
 ## Install
 
@@ -350,6 +537,40 @@ No dependencies beyond the Python standard library. After restarting, add the
 node from the `VFX/naming` category. If the shot-number stepping behaves oddly
 after an update, hard-refresh the browser (Cmd/Ctrl+Shift+R) — the bundled
 JavaScript is cached.
+
+**Requires ComfyUI 0.8.0 or newer.** The `schema` dropdown swaps the node's
+fields through the V3 node API's `io.DynamicCombo`, which arrived in 0.4.0; the
+nested option expansion this node relies on landed in 0.8.0. Developed and
+tested against 0.34.0.
+
+## Upgrading to 2.0
+
+2.0 moved the token fields out of Python and into the schema files. This is a
+breaking change: ComfyUI stores widget values by position, and the widget set
+now changes with the selected schema, so **a saved workflow containing this node
+has to be reconfigured once**. Newly added nodes are unaffected.
+
+What changed for schema authors:
+
+- `task_rules` is gone. `standard_pattern` is the token's own `pattern`,
+  `plate_pattern` is its `layer_pattern`, and `final` is no longer needed — a
+  preset keeps its case on its own.
+- `shot_padding`, `version_padding` and `frame_padding` are gone. Padding is
+  `pad` on the token; copy the schema if you need a different one.
+- `FINAL` is no longer a shipped preset, and `task` no longer has to be four
+  characters.
+- `sequence_subfolder` is now called `folders`.
+
+## Tests
+
+```bash
+COMFYUI_PATH=/path/to/ComfyUI python3 -m unittest discover -s tests
+```
+
+`COMFYUI_PATH` is only needed for the node tests; the engine tests run without
+it. `tests/golden_v1.json` holds the output of the pre-2.0 node across the four
+schemas that predate it, and the suite asserts that the rewrite still produces
+it byte for byte.
 
 ## Credits
 

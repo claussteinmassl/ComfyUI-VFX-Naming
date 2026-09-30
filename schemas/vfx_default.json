@@ -6,45 +6,105 @@
       "label": "Show code",
       "charset": "alpha",
       "case": "upper",
-      "length": 3
+      "length": 3,
+      "default": "SHW"
     },
     "seq": {
       "label": "Sequence code",
       "charset": "alpha",
       "case": "upper",
-      "length": 3
+      "length": 3,
+      "default": "SEQ"
     },
     "shot": {
       "label": "Shot number",
       "type": "int",
-      "pad": 4
+      "pad": 4,
+      "default": 10,
+      "step": 10
     },
     "task": {
       "label": "Task",
-      "charset": "alnum"
+      "charset": "alnum",
+      "case": "lower",
+      "default": "comp",
+      "presets": [
+        "comp",
+        "prev",
+        "post",
+        "prep",
+        "roto",
+        "pant",
+        "dmpt",
+        "envr",
+        "layt",
+        "trck",
+        "mmov",
+        "anim",
+        "crwd",
+        "mdel",
+        "txtr",
+        "lkdv",
+        "lght",
+        "rndr",
+        "fxsm",
+        "cfxs",
+        "genr",
+        "upsc",
+        "dnse",
+        "test",
+        "mp",
+        "bg",
+        "fg",
+        "el",
+        "cp",
+        "rp"
+      ],
+      "allow_custom": true,
+      "layer_pattern": "(mp|bg|fg|el|cp|rp)(\\d{1,2})?",
+      "layer_pad": 2
     },
     "vendor": {
       "label": "Vendor id",
       "charset": "alpha",
       "case": "lower",
       "length": 3,
-      "optional": true
+      "optional": true,
+      "default": ""
     },
     "version": {
       "label": "Version",
       "type": "int",
       "pad": 3,
-      "prefix": "v"
+      "prefix": "v",
+      "default": 1
     },
     "frame": {
       "label": "Frame",
       "type": "int",
-      "pad": 4
+      "pad": 4,
+      "default": 1001
     },
     "ext": {
       "label": "Extension",
       "charset": "alnum",
-      "case": "lower"
+      "case": "lower",
+      "default": "exr",
+      "presets": [
+        "exr",
+        "png",
+        "tif",
+        "tiff",
+        "jpg",
+        "dpx",
+        "webp",
+        "mov",
+        "mp4",
+        "mxf",
+        "cube",
+        "cdl"
+      ],
+      "allow_custom": true
     }
   },
   "folders": [
@@ -52,11 +112,7 @@
   ],
   "file": "{show}_{seq}_{shot}_{task}[_{vendor}]_{version}",
   "filename": "{basename}.{frame}.{ext}",
-  "task_rules": {
-    "plate_pattern": "(mp|bg|fg|el|cp|rp)(\\d{1,2})?",
-    "standard_pattern": "[a-z]{4}",
-    "final": "FINAL"
-  },
+  "shot_id": "{show}_{seq}_{shot}",
   "rules": [
     {
       "when": {

@@ -1,0 +1,522 @@
+{
+  "episodic_dotted::_final_dropped": {
+    "basename": "SHW.SEQ.0010.FINAL.v001",
+    "example_filename": "SHW.SEQ.0010.FINAL.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ.0010/SHW.SEQ.0010.FINAL.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : FINAL  (approved final)\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ.0010\n  Prefix        : SHW/SEQ.0010/SHW.SEQ.0010.FINAL.v001\n  Example file  : SHW.SEQ.0010.FINAL.v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::custom_tokens": {
+    "basename": "SHW.SEQ.0010.comp.vp.v001",
+    "example_filename": "SHW.SEQ.0010.comp.vp.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/ep101/SEQ.0010/SHW.SEQ.0010.comp.vp.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/ep101/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n  artist        : vp  (custom)\n  episode       : 101  (custom)\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/ep101/SEQ.0010\n  Prefix        : SHW/ep101/SEQ.0010/SHW.SEQ.0010.comp.vp.v001\n  Example file  : SHW.SEQ.0010.comp.vp.v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::defaults": {
+    "basename": "SHW.SEQ.0010.comp.v001",
+    "example_filename": "SHW.SEQ.0010.comp.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ.0010/SHW.SEQ.0010.comp.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ.0010\n  Prefix        : SHW/SEQ.0010/SHW.SEQ.0010.comp.v001\n  Example file  : SHW.SEQ.0010.comp.v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::ext_png": {
+    "basename": "SHW.SEQ.0010.comp.v001",
+    "example_filename": "SHW.SEQ.0010.comp.v001.1001.png",
+    "extension": "png",
+    "filename_prefix": "SHW/SEQ.0010/SHW.SEQ.0010.comp.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : png\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ.0010\n  Prefix        : SHW/SEQ.0010/SHW.SEQ.0010.comp.v001\n  Example file  : SHW.SEQ.0010.comp.v001.1001.png",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::frame_and_ver": {
+    "basename": "SHW.SEQ.0250.comp.v012",
+    "example_filename": "SHW.SEQ.0250.comp.v012.1051.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ.0250/SHW.SEQ.0250.comp.v012",
+    "first_frame": 1051,
+    "folder_name": "SHW/SEQ.0250",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0250\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v012\n  First frame   : 1051\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0250\n  Folder        : SHW/SEQ.0250\n  Prefix        : SHW/SEQ.0250/SHW.SEQ.0250.comp.v012\n  Example file  : SHW.SEQ.0250.comp.v012.1051.exr",
+    "shot_id": "SHW_SEQ_0250"
+  },
+  "episodic_dotted::no_folders": {
+    "basename": "SHW.SEQ.0010.comp.v001",
+    "example_filename": "SHW.SEQ.0010.comp.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW.SEQ.0010.comp.v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW.SEQ.0010.comp.v001\n  Example file  : SHW.SEQ.0010.comp.v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::override": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{show}_{seq}_{shot}_{task}_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ\n  Prefix        : SHW/SEQ/SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::parent_path": {
+    "basename": "SHW.SEQ.0010.comp.v001",
+    "example_filename": "SHW.SEQ.0010.comp.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "ARCHIVE/2026/SHW/SEQ.0010/SHW.SEQ.0010.comp.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ.0010\n  Prefix        : ARCHIVE/2026/SHW/SEQ.0010/SHW.SEQ.0010.comp.v001\n  Example file  : SHW.SEQ.0010.comp.v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::permissive_dirt": {
+    "basename": "SHW.SQ.0010.comp.v001",
+    "example_filename": "SHW.SQ.0010.comp.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SQ.0010/SHW.SQ.0010.comp.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SQ_0010\n  Folder        : SHW/SQ.0010\n  Prefix        : SHW/SQ.0010/SHW.SQ.0010.comp.v001\n  Example file  : SHW.SQ.0010.comp.v001.1001.exr\n\nWARNINGS:\n  ! Show code: only letters are allowed - 'shwx!' was reduced to 'shwx'.\n  ! Show code must be exactly 3 characters (got 'SHWX', 4).\n  ! Sequence code must be exactly 3 characters (got 'SQ', 2).\n  ! Vendor id must be exactly 3 characters (got 'abcd', 4).",
+    "shot_id": "SHW_SQ_0010"
+  },
+  "episodic_dotted::plate_layer": {
+    "basename": "SHW.SEQ.0010.bg02.v001",
+    "example_filename": "SHW.SEQ.0010.bg02.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ.0010/SHW.SEQ.0010.bg02.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : bg02  (Background Plate)\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ.0010\n  Prefix        : SHW/SEQ.0010/SHW.SEQ.0010.bg02.v001\n  Example file  : SHW.SEQ.0010.bg02.v001.1001.exr\n\nWARNINGS:\n  ! Lab plates carry no vendor id (dropped 'abc').",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::plate_no_layer": {
+    "basename": "SHW.SEQ.0010.bg.v001",
+    "example_filename": "SHW.SEQ.0010.bg.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ.0010/SHW.SEQ.0010.bg.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : bg  (Background Plate)\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ.0010\n  Prefix        : SHW/SEQ.0010/SHW.SEQ.0010.bg.v001\n  Example file  : SHW.SEQ.0010.bg.v001.1001.exr\n\nWARNINGS:\n  ! Lab plates carry no vendor id (dropped 'abc').",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::task_custom": {
+    "basename": "SHW.SEQ.0010.dnse.v001",
+    "example_filename": "SHW.SEQ.0010.dnse.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ.0010/SHW.SEQ.0010.dnse.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : dnse\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ.0010\n  Prefix        : SHW/SEQ.0010/SHW.SEQ.0010.dnse.v001\n  Example file  : SHW.SEQ.0010.dnse.v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "episodic_dotted::vendor": {
+    "basename": "SHW.SEQ.0010.comp.v001",
+    "example_filename": "SHW.SEQ.0010.comp.v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ.0010/SHW.SEQ.0010.comp.v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ.0010",
+    "report": "SCHEMA: Episodic dotted (custom tokens)  (episodic_dotted)\n  Dot delimited, episode and artist supplied through custom_tokens: episode=101, artist=vp. Shows that the token set is not fixed.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/[ep{episode}]/{seq}.{shot}/{show}.{seq}.{shot}.{task}[.{artist}].{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ.0010\n  Prefix        : SHW/SEQ.0010/SHW.SEQ.0010.comp.v001\n  Example file  : SHW.SEQ.0010.comp.v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::_final_dropped": {
+    "basename": "v001-0010-FINAL-abc",
+    "example_filename": "v001-0010-FINAL-abc.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/0010/FINAL-abc/v001-0010-FINAL-abc",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/FINAL-abc",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : FINAL  (approved final)\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/FINAL-abc\n  Prefix        : SHW/SEQ/0010/FINAL-abc/v001-0010-FINAL-abc\n  Example file  : v001-0010-FINAL-abc.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::custom_tokens": {
+    "basename": "v001-0010-comp",
+    "example_filename": "v001-0010-comp.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/0010/comp/v001-0010-comp",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/comp",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n  artist        : vp  (custom)\n  episode       : 101  (custom)\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/comp\n  Prefix        : SHW/SEQ/0010/comp/v001-0010-comp\n  Example file  : v001-0010-comp.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::defaults": {
+    "basename": "v001-0010-comp",
+    "example_filename": "v001-0010-comp.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/0010/comp/v001-0010-comp",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/comp",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/comp\n  Prefix        : SHW/SEQ/0010/comp/v001-0010-comp\n  Example file  : v001-0010-comp.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::ext_png": {
+    "basename": "v001-0010-comp",
+    "example_filename": "v001-0010-comp.1001.png",
+    "extension": "png",
+    "filename_prefix": "SHW/SEQ/0010/comp/v001-0010-comp",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/comp",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : png\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/comp\n  Prefix        : SHW/SEQ/0010/comp/v001-0010-comp\n  Example file  : v001-0010-comp.1001.png",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::frame_and_ver": {
+    "basename": "v012-0250-comp",
+    "example_filename": "v012-0250-comp.1051.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/0250/comp/v012-0250-comp",
+    "first_frame": 1051,
+    "folder_name": "SHW/SEQ/0250/comp",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0250\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v012\n  First frame   : 1051\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0250\n  Folder        : SHW/SEQ/0250/comp\n  Prefix        : SHW/SEQ/0250/comp/v012-0250-comp\n  Example file  : v012-0250-comp.1051.exr",
+    "shot_id": "SHW_SEQ_0250"
+  },
+  "studio_nested::no_folders": {
+    "basename": "v001-0010-comp-abc",
+    "example_filename": "v001-0010-comp-abc.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "v001-0010-comp-abc",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : v001-0010-comp-abc\n  Example file  : v001-0010-comp-abc.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::override": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{show}_{seq}_{shot}_{task}_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ\n  Prefix        : SHW/SEQ/SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::parent_path": {
+    "basename": "v001-0010-comp-abc",
+    "example_filename": "v001-0010-comp-abc.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "ARCHIVE/2026/SHW/SEQ/0010/comp-abc/v001-0010-comp-abc",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/comp-abc",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/comp-abc\n  Prefix        : ARCHIVE/2026/SHW/SEQ/0010/comp-abc/v001-0010-comp-abc\n  Example file  : v001-0010-comp-abc.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::permissive_dirt": {
+    "basename": "v001-0010-comp-abc",
+    "example_filename": "v001-0010-comp-abc.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SQ/0010/comp-abc/v001-0010-comp-abc",
+    "first_frame": 1001,
+    "folder_name": "SHW/SQ/0010/comp-abc",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SQ_0010\n  Folder        : SHW/SQ/0010/comp-abc\n  Prefix        : SHW/SQ/0010/comp-abc/v001-0010-comp-abc\n  Example file  : v001-0010-comp-abc.1001.exr\n\nWARNINGS:\n  ! Show code: only letters are allowed - 'shwx!' was reduced to 'shwx'.\n  ! Show code must be exactly 3 characters (got 'SHWX', 4).\n  ! Sequence code must be exactly 3 characters (got 'SQ', 2).\n  ! Vendor id must be exactly 3 characters (got 'abcd', 4).",
+    "shot_id": "SHW_SQ_0010"
+  },
+  "studio_nested::plate_layer": {
+    "basename": "v001-0010-bg02",
+    "example_filename": "v001-0010-bg02.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/0010/bg02/v001-0010-bg02",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/bg02",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : bg02  (Background Plate)\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/bg02\n  Prefix        : SHW/SEQ/0010/bg02/v001-0010-bg02\n  Example file  : v001-0010-bg02.1001.exr\n\nWARNINGS:\n  ! Lab plates carry no vendor id (dropped 'abc').",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::plate_no_layer": {
+    "basename": "v001-0010-bg",
+    "example_filename": "v001-0010-bg.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/0010/bg/v001-0010-bg",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/bg",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : bg  (Background Plate)\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/bg\n  Prefix        : SHW/SEQ/0010/bg/v001-0010-bg\n  Example file  : v001-0010-bg.1001.exr\n\nWARNINGS:\n  ! Lab plates carry no vendor id (dropped 'abc').",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::task_custom": {
+    "basename": "v001-0010-dnse-abc",
+    "example_filename": "v001-0010-dnse-abc.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/0010/dnse-abc/v001-0010-dnse-abc",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/dnse-abc",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : dnse\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/dnse-abc\n  Prefix        : SHW/SEQ/0010/dnse-abc/v001-0010-dnse-abc\n  Example file  : v001-0010-dnse-abc.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "studio_nested::vendor": {
+    "basename": "v001-0010-comp-abc",
+    "example_filename": "v001-0010-comp-abc.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/0010/comp-abc/v001-0010-comp-abc",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ/0010/comp-abc",
+    "report": "SCHEMA: Studio nested (show/seq/shot/task)  (studio_nested)\n  Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{shot}/{task}[-{vendor}]/{version}-{shot}-{task}[-{vendor}]\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ/0010/comp-abc\n  Prefix        : SHW/SEQ/0010/comp-abc/v001-0010-comp-abc\n  Example file  : v001-0010-comp-abc.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::_final_dropped": {
+    "basename": "SHW_SEQ_0010_FINAL_abc_v001",
+    "example_filename": "SHW_SEQ_0010_FINAL_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_FINAL_abc_v001/SHW_SEQ_0010_FINAL_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_FINAL_abc_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : FINAL  (approved final)\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_FINAL_abc_v001\n  Prefix        : SHW_SEQ_0010_FINAL_abc_v001/SHW_SEQ_0010_FINAL_abc_v001\n  Example file  : SHW_SEQ_0010_FINAL_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::custom_tokens": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_comp_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n  artist        : vp  (custom)\n  episode       : 101  (custom)\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_comp_v001\n  Prefix        : SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::defaults": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_comp_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_comp_v001\n  Prefix        : SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::ext_png": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.png",
+    "extension": "png",
+    "filename_prefix": "SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_comp_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : png\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_comp_v001\n  Prefix        : SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.png",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::frame_and_ver": {
+    "basename": "SHW_SEQ_0250_comp_v012",
+    "example_filename": "SHW_SEQ_0250_comp_v012.1051.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0250_comp_v012/SHW_SEQ_0250_comp_v012",
+    "first_frame": 1051,
+    "folder_name": "SHW_SEQ_0250_comp_v012",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0250\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v012\n  First frame   : 1051\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0250\n  Folder        : SHW_SEQ_0250_comp_v012\n  Prefix        : SHW_SEQ_0250_comp_v012/SHW_SEQ_0250_comp_v012\n  Example file  : SHW_SEQ_0250_comp_v012.1051.exr",
+    "shot_id": "SHW_SEQ_0250"
+  },
+  "vfx_default::no_folders": {
+    "basename": "SHW_SEQ_0010_comp_abc_v001",
+    "example_filename": "SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_comp_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_comp_abc_v001\n  Example file  : SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::override": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{show}_{seq}_{shot}_{task}_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ\n  Prefix        : SHW/SEQ/SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::parent_path": {
+    "basename": "SHW_SEQ_0010_comp_abc_v001",
+    "example_filename": "SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "ARCHIVE/2026/SHW_SEQ_0010_comp_abc_v001/SHW_SEQ_0010_comp_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_comp_abc_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_comp_abc_v001\n  Prefix        : ARCHIVE/2026/SHW_SEQ_0010_comp_abc_v001/SHW_SEQ_0010_comp_abc_v001\n  Example file  : SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::permissive_dirt": {
+    "basename": "SHW_SQ_0010_comp_abc_v001",
+    "example_filename": "SHW_SQ_0010_comp_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SQ_0010_comp_abc_v001/SHW_SQ_0010_comp_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SQ_0010_comp_abc_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SQ_0010\n  Folder        : SHW_SQ_0010_comp_abc_v001\n  Prefix        : SHW_SQ_0010_comp_abc_v001/SHW_SQ_0010_comp_abc_v001\n  Example file  : SHW_SQ_0010_comp_abc_v001.1001.exr\n\nWARNINGS:\n  ! Show code: only letters are allowed - 'shwx!' was reduced to 'shwx'.\n  ! Show code must be exactly 3 characters (got 'SHWX', 4).\n  ! Sequence code must be exactly 3 characters (got 'SQ', 2).\n  ! Vendor id must be exactly 3 characters (got 'abcd', 4).",
+    "shot_id": "SHW_SQ_0010"
+  },
+  "vfx_default::plate_layer": {
+    "basename": "SHW_SEQ_0010_bg02_v001",
+    "example_filename": "SHW_SEQ_0010_bg02_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_bg02_v001/SHW_SEQ_0010_bg02_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_bg02_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : bg02  (Background Plate)\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_bg02_v001\n  Prefix        : SHW_SEQ_0010_bg02_v001/SHW_SEQ_0010_bg02_v001\n  Example file  : SHW_SEQ_0010_bg02_v001.1001.exr\n\nWARNINGS:\n  ! Lab plates carry no vendor id (dropped 'abc').",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::plate_no_layer": {
+    "basename": "SHW_SEQ_0010_bg_v001",
+    "example_filename": "SHW_SEQ_0010_bg_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_bg_v001/SHW_SEQ_0010_bg_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_bg_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : bg  (Background Plate)\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_bg_v001\n  Prefix        : SHW_SEQ_0010_bg_v001/SHW_SEQ_0010_bg_v001\n  Example file  : SHW_SEQ_0010_bg_v001.1001.exr\n\nWARNINGS:\n  ! Lab plates carry no vendor id (dropped 'abc').",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::task_custom": {
+    "basename": "SHW_SEQ_0010_dnse_abc_v001",
+    "example_filename": "SHW_SEQ_0010_dnse_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_dnse_abc_v001/SHW_SEQ_0010_dnse_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_dnse_abc_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : dnse\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_dnse_abc_v001\n  Prefix        : SHW_SEQ_0010_dnse_abc_v001/SHW_SEQ_0010_dnse_abc_v001\n  Example file  : SHW_SEQ_0010_dnse_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_default::vendor": {
+    "basename": "SHW_SEQ_0010_comp_abc_v001",
+    "example_filename": "SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_comp_abc_v001/SHW_SEQ_0010_comp_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW_SEQ_0010_comp_abc_v001",
+    "report": "SCHEMA: VFX default  (vfx_default)\n  SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW_SEQ_0010_comp_abc_v001\n  Prefix        : SHW_SEQ_0010_comp_abc_v001/SHW_SEQ_0010_comp_abc_v001\n  Example file  : SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::_final_dropped": {
+    "basename": "SHW_SEQ_0010_FINAL_abc_v001",
+    "example_filename": "SHW_SEQ_0010_FINAL_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_FINAL_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : FINAL  (approved final)\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_FINAL_abc_v001\n  Example file  : SHW_SEQ_0010_FINAL_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::custom_tokens": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n  artist        : vp  (custom)\n  episode       : 101  (custom)\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::defaults": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::ext_png": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.png",
+    "extension": "png",
+    "filename_prefix": "SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : png\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.png",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::frame_and_ver": {
+    "basename": "SHW_SEQ_0250_comp_v012",
+    "example_filename": "SHW_SEQ_0250_comp_v012.1051.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0250_comp_v012",
+    "first_frame": 1051,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0250\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v012\n  First frame   : 1051\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0250\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0250_comp_v012\n  Example file  : SHW_SEQ_0250_comp_v012.1051.exr",
+    "shot_id": "SHW_SEQ_0250"
+  },
+  "vfx_flat::no_folders": {
+    "basename": "SHW_SEQ_0010_comp_abc_v001",
+    "example_filename": "SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_comp_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_comp_abc_v001\n  Example file  : SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::override": {
+    "basename": "SHW_SEQ_0010_comp_v001",
+    "example_filename": "SHW_SEQ_0010_comp_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW/SEQ/SHW_SEQ_0010_comp_v001",
+    "first_frame": 1001,
+    "folder_name": "SHW/SEQ",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}/{seq}/{show}_{seq}_{shot}_{task}_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : SHW/SEQ\n  Prefix        : SHW/SEQ/SHW_SEQ_0010_comp_v001\n  Example file  : SHW_SEQ_0010_comp_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::parent_path": {
+    "basename": "SHW_SEQ_0010_comp_abc_v001",
+    "example_filename": "SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "ARCHIVE/2026/SHW_SEQ_0010_comp_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : ARCHIVE/2026/SHW_SEQ_0010_comp_abc_v001\n  Example file  : SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::permissive_dirt": {
+    "basename": "SHW_SQ_0010_comp_abc_v001",
+    "example_filename": "SHW_SQ_0010_comp_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SQ_0010_comp_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SQ_0010_comp_abc_v001\n  Example file  : SHW_SQ_0010_comp_abc_v001.1001.exr\n\nWARNINGS:\n  ! Show code: only letters are allowed - 'shwx!' was reduced to 'shwx'.\n  ! Show code must be exactly 3 characters (got 'SHWX', 4).\n  ! Sequence code must be exactly 3 characters (got 'SQ', 2).\n  ! Vendor id must be exactly 3 characters (got 'abcd', 4).",
+    "shot_id": "SHW_SQ_0010"
+  },
+  "vfx_flat::plate_layer": {
+    "basename": "SHW_SEQ_0010_bg02_v001",
+    "example_filename": "SHW_SEQ_0010_bg02_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_bg02_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : bg02  (Background Plate)\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_bg02_v001\n  Example file  : SHW_SEQ_0010_bg02_v001.1001.exr\n\nWARNINGS:\n  ! Lab plates carry no vendor id (dropped 'abc').",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::plate_no_layer": {
+    "basename": "SHW_SEQ_0010_bg_v001",
+    "example_filename": "SHW_SEQ_0010_bg_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_bg_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : bg  (Background Plate)\n  Vendor id     : - (omitted)\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_bg_v001\n  Example file  : SHW_SEQ_0010_bg_v001.1001.exr\n\nWARNINGS:\n  ! Lab plates carry no vendor id (dropped 'abc').",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::task_custom": {
+    "basename": "SHW_SEQ_0010_dnse_abc_v001",
+    "example_filename": "SHW_SEQ_0010_dnse_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_dnse_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : dnse\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_dnse_abc_v001\n  Example file  : SHW_SEQ_0010_dnse_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  },
+  "vfx_flat::vendor": {
+    "basename": "SHW_SEQ_0010_comp_abc_v001",
+    "example_filename": "SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "extension": "exr",
+    "filename_prefix": "SHW_SEQ_0010_comp_abc_v001",
+    "first_frame": 1001,
+    "folder_name": "",
+    "report": "SCHEMA: VFX flat (no sequence folder)  (vfx_flat)\n  Same filename, written straight into the output folder.\n\n  Show code     : SHW\n  Sequence code : SEQ\n  Shot number   : 0010\n  Task          : comp\n  Vendor id     : abc\n  Version       : v001\n  First frame   : 1001\n  Extension     : exr\n\n  Template      : {show}_{seq}_{shot}_{task}[_{vendor}]_{version}\n  Shot ID       : SHW_SEQ_0010\n  Folder        : - (none)\n  Prefix        : SHW_SEQ_0010_comp_abc_v001\n  Example file  : SHW_SEQ_0010_comp_abc_v001.1001.exr",
+    "shot_id": "SHW_SEQ_0010"
+  }
+}

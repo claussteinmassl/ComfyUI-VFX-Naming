@@ -2,10 +2,16 @@
 VFX Naming Convention node for ComfyUI.
 
 Builds a filename_prefix that follows a VFX shot/plate naming convention. The
-convention itself is *configuration*, not code: which tokens exist, how each is
-formatted and validated, the delimiters, the token order and the number of
-folder levels all live in JSON under `schemas/`. This module supplies the
-values and renders the selected schema - see `naming_schema.py` for the engine.
+convention is *configuration*, not code: which tokens exist, how each one is
+formatted and validated, the delimiters, the token order, the folder depth and
+the way each token is offered in the node all live in JSON under `schemas/`.
+This module only turns a schema into inputs and renders the result - see
+`naming_schema.py` for the engine.
+
+The `schema` widget is an `io.DynamicCombo` whose options are generated from
+the JSON files, so picking a schema swaps the node's fields for that schema's
+tokens. A token that declares `presets` becomes a dropdown of its own, with a
+`(custom)` entry when the schema allows free text.
 
 Default schema:
 
@@ -17,7 +23,10 @@ Reference: "VFX Naming Convention" paper by Victor Perez, VFX Supervisor.
 
 import re
 
+from comfy_api.latest import io
+
 from .naming_schema import (
+    CUSTOM,
     NamingError,
     load_schema,
     parse_custom_tokens,
@@ -28,90 +37,7 @@ from .naming_schema import (
 # Kept as an alias so existing imports and error handling keep working.
 VFXNamingError = NamingError
 
-# --- Task vocabularies -------------------------------------------------------
-
-# Plate types produced by the lab: 2 characters, optionally + a layer number
-# (bg02, fg12). Plates carry no vendor id.
-PLATE_TASKS = ("mp", "bg", "fg", "el", "cp", "rp")
-
-PLATE_LABELS = {
-    "mp": "Main Plate",
-    "bg": "Background Plate",
-    "fg": "Foreground Plate",
-    "el": "Element Plate",
-    "cp": "Clean Plate",
-    "rp": "Reference Plate",
-}
-
-FINAL_TASK = "FINAL"  # complete + approved shot, uppercase by convention
-CUSTOM = "(custom)"
-
-TASK_PRESETS = [
-    # generic 4-letter task codes
-    "comp", "prev", "post", "prep", "roto", "pant", "dmpt", "envr",
-    "layt", "trck", "mmov", "anim", "crwd", "mdel", "txtr", "lkdv",
-    "lght", "rndr", "fxsm", "cfxs", "genr", "upsc", "dnse", "test",
-    # approved final
-    FINAL_TASK,
-    # lab plate types
-    *PLATE_TASKS,
-    CUSTOM,
-]
-
-EXTENSIONS = [
-    "exr", "png", "tif", "tiff", "jpg", "dpx", "webp",
-    "mov", "mp4", "mxf", "cube", "cdl",
-]
-
-
-def _fail(message, strict, warnings):
-    if strict:
-        raise NamingError(message)
-    warnings.append(message)
-
-
-def _resolve_task(schema, preset, custom, plate_layer, strict, warnings):
-    """Return (task_string, is_plate) using the schema's task rules."""
-    rules = schema.task_rules or {}
-    final_task = rules.get("final", FINAL_TASK)
-    plate_re = re.compile(f"^(?:{rules.get('plate_pattern', 'x^')})$")
-    standard = rules.get("standard_pattern")
-
-    task = (custom or "").strip() if preset == CUSTOM else preset
-    if not task:
-        raise NamingError(
-            "Task is empty: pick a preset or fill in 'task_custom' when using "
-            f"'{CUSTOM}'."
-        )
-
-    if final_task and task.upper() == final_task.upper():
-        return final_task, False
-
-    base = re.sub(r"[^A-Za-z0-9]", "", task).lower()
-    if base != task.lower().strip():
-        _fail(f"Task: only letters and digits are allowed - '{task}' was reduced "
-              f"to '{base}'.", strict, warnings)
-
-    match = plate_re.match(base)
-    if match:
-        groups = match.groups()
-        stem = groups[0] if groups and groups[0] else base
-        layer = groups[1] if len(groups) > 1 and groups[1] else ""
-        if plate_layer > 0:
-            if layer and int(layer) != plate_layer:
-                warnings.append(
-                    f"Task: '{base}' already carries a layer number; "
-                    f"'plate_layer' ({plate_layer}) was ignored."
-                )
-            elif not layer:
-                layer = f"{plate_layer:02d}"
-        return stem + (layer or ""), True
-
-    if standard and not re.fullmatch(standard, base):
-        _fail(f"Task '{base}' is not valid for this schema: expected "
-              f"/{standard}/, a plate type, or '{final_task}'.", strict, warnings)
-
-    return base, False
+MAX_INT = 999999999
 
 
 def _sanitize_path(value, strict, warnings):
@@ -134,220 +60,297 @@ def _sanitize_path(value, strict, warnings):
     return "/".join(segments)
 
 
+def _fail(message, strict, warnings):
+    if strict:
+        raise NamingError(message)
+    warnings.append(message)
+
+
+# --- Turning a schema into node inputs ---------------------------------------
+
+def _preset_input(spec):
+    """A dropdown of the token's presets, plus the fields each one reveals."""
+    layered = set(spec.layered_presets())
+    initial = str(spec.initial())
+
+    # The first option is what the node starts on, so the default leads.
+    presets = list(spec.presets)
+    if initial in presets:
+        presets.remove(initial)
+        presets.insert(0, initial)
+
+    options = []
+    for preset in presets:
+        revealed = []
+        if preset in layered:
+            revealed.append(io.Int.Input(
+                f"{spec.name}_layer", display_name="layer",
+                default=0, min=0, max=10 ** spec.layer_pad - 1, step=1,
+                tooltip=(f"Layer number appended to '{preset}' "
+                         f"(0 = none): {preset} -> {preset}"
+                         f"{2:0{spec.layer_pad}d}."),
+            ))
+        options.append(io.DynamicCombo.Option(preset, revealed))
+
+    if spec.allow_custom:
+        options.append(io.DynamicCombo.Option(CUSTOM, [
+            io.String.Input(
+                f"{spec.name}_custom", display_name=f"{spec.label} (custom)",
+                default="",
+                tooltip=(f"{spec.label} used instead of a preset. Unlike a "
+                         "preset this is validated against the schema."),
+            ),
+        ]))
+
+    return io.DynamicCombo.Input(
+        spec.name, display_name=spec.label, options=options,
+        tooltip=_token_tooltip(spec),
+    )
+
+
+def _token_input(spec):
+    """The node input one token contributes."""
+    if spec.options:
+        return _preset_input(spec)
+
+    if spec.is_int:
+        step = int(spec.step or 1)
+        return io.Int.Input(
+            spec.name, display_name=spec.label,
+            default=int(spec.initial() or 0), min=0, max=MAX_INT, step=step,
+            # web/vfx_naming.js reads this to snap the +/- buttons onto the
+            # schema's grid without also snapping typed values.
+            extra_dict={"vfxGridStep": step} if step > 1 else None,
+            tooltip=_token_tooltip(spec),
+        )
+
+    return io.String.Input(
+        spec.name, display_name=spec.label, default=str(spec.initial() or ""),
+        tooltip=_token_tooltip(spec),
+    )
+
+
+def _token_tooltip(spec):
+    """Describe a token's rules in the words of the schema that declared it."""
+    parts = []
+    if spec.is_int:
+        if spec.pad:
+            parts.append(f"zero padded to {spec.pad} digits")
+        if spec.step and spec.step > 1:
+            parts.append(f"increments of {spec.step}")
+    else:
+        if spec.charset == "alpha":
+            parts.append("letters only")
+        elif spec.charset == "alnum":
+            parts.append("letters and digits only")
+        if spec.case:
+            parts.append(f"{spec.case}case")
+        if spec.length:
+            parts.append(f"exactly {spec.length} characters")
+        if spec.pattern:
+            parts.append(f"matching /{spec.pattern}/")
+    if spec.prefix:
+        parts.append(f"prefixed '{spec.prefix}'")
+    if spec.presets and not spec.allow_custom:
+        parts.append("no other values accepted")
+    if spec.optional:
+        parts.append("may be left empty, in which case it and its delimiter "
+                     "are dropped")
+    return f"{spec.label}: " + (", ".join(parts) if parts else "free text") + "."
+
+
+def _schema_option(key):
+    """One entry of the schema dropdown: its label and its token fields."""
+    config = load_schema(key)
+    inputs = [_token_input(spec) for spec in config.tokens.values()]
+    return io.DynamicCombo.Option(key, inputs)
+
+
+# --- Reading the values back -------------------------------------------------
+
+def _as_int(text, spec):
+    """Read a rendered token back as a number, stepping over its prefix."""
+    raw = str(text or "")
+    if spec and spec.prefix and raw.startswith(spec.prefix):
+        raw = raw[len(spec.prefix):]
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
+
+
+def _token_values(spec, supplied):
+    """Split one token's node input into (value, custom, layer)."""
+    # A DynamicCombo whose selected option reveals fields arrives as
+    # {"<token>": selected, "<token>_custom": ...}. An option that reveals
+    # nothing arrives as the bare selection, so a plain value is valid here too.
+    if not spec.options or not isinstance(supplied, dict):
+        return supplied, None, 0
+
+    return (
+        supplied.get(spec.name),
+        supplied.get(f"{spec.name}_custom"),
+        supplied.get(f"{spec.name}_layer", 0),
+    )
+
+
 # --- Node --------------------------------------------------------------------
 
-class VFXNamingConvention:
+class VFXNamingConvention(io.ComfyNode):
     """Compose a VFX-compliant filename_prefix for Save Image / video nodes."""
 
     @classmethod
-    def INPUT_TYPES(cls):
-        schemas = schema_names()
-        return {
-            "required": {
-                "show_code": ("STRING", {
-                    "default": "SHW", "multiline": False,
-                    "tooltip": "Show code: 3 letters, uppercase (e.g. SHW).",
-                }),
-                "sequence_code": ("STRING", {
-                    "default": "SEQ", "multiline": False,
-                    "tooltip": "Sequence/block code: 3 letters, uppercase (e.g. SEQ).",
-                }),
-                "shot_number": ("INT", {
-                    "default": 10, "min": 0, "max": 999999, "step": 1,
-                    "tooltip": (
-                        "Shot number, zero padded. The arrows step in tens (the "
-                        "convention's increment), but any number can be typed in "
-                        "manually - 15, 0125, whatever the show uses."
+    def define_schema(cls):
+        return io.Schema(
+            node_id="VFXNamingConvention",
+            display_name="VFX Naming Convention (Filename Prefix)",
+            category="VFX/naming",
+            description=(
+                "Build a VFX naming convention filename_prefix from a JSON "
+                "schema. The schema decides which fields this node shows:\n"
+                "<SHOW>_<SEQ>_<SHOT>_<TASK>_<VENDOR>_v<VERSION>.<FRAME>.<EXT>"
+            ),
+            inputs=[
+                io.DynamicCombo.Input(
+                    "schema",
+                    display_name="Schema",
+                    options=[_schema_option(key) for key in schema_names()],
+                    tooltip=(
+                        "Naming schema from the schemas/ folder: token rules, "
+                        "delimiters, token order and folder depth. The fields "
+                        "below are the tokens it declares. Drop your own JSON "
+                        "in there to add a studio convention."
                     ),
-                }),
-                "task": (TASK_PRESETS, {
-                    "default": "comp",
-                    "tooltip": (
-                        "Task code: 4 lowercase letters, a 2-character lab plate "
-                        "type (mp/bg/fg/el/cp/rp), FINAL for approved shots, or "
-                        "(custom)."
+                ),
+                io.Boolean.Input(
+                    "folders", default=True,
+                    label_on="folder + files", label_off="files only",
+                    tooltip=(
+                        "Render the schema's folder levels. Off writes the "
+                        "files straight into the output folder."
                     ),
-                }),
-                "vendor_id": ("STRING", {
-                    "default": "", "multiline": False,
-                    "tooltip": (
-                        "Vendor id: 3 letters, lowercase. Leave empty for lab "
-                        "plates - the component and its delimiter are dropped."
+                ),
+                io.Boolean.Input(
+                    "strict", default=True,
+                    label_on="strict", label_off="permissive",
+                    tooltip=(
+                        "Strict: abort on any violation. Permissive: "
+                        "auto-correct and list the issues in the report output."
                     ),
-                }),
-                "version": ("INT", {
-                    "default": 1, "min": 0, "max": 999999, "step": 1,
-                    "tooltip": "Version number, 'v' prefixed and zero padded.",
-                }),
-                "sequence_subfolder": ("BOOLEAN", {
-                    "default": True, "label_on": "folder + files",
-                    "label_off": "files only",
-                    "tooltip": (
-                        "Render the schema's folder levels. Off writes the files "
-                        "straight into the output folder."
-                    ),
-                }),
-                "strict": ("BOOLEAN", {
-                    "default": True, "label_on": "strict", "label_off": "permissive",
-                    "tooltip": (
-                        "Strict: abort on any violation. Permissive: auto-correct "
-                        "and list the issues in the report output."
-                    ),
-                }),
-            },
-            "optional": {
-                "task_custom": ("STRING", {
-                    "default": "", "multiline": False,
-                    "tooltip": "Task code used when 'task' is set to (custom).",
-                }),
-                "plate_layer": ("INT", {
-                    "default": 0, "min": 0, "max": 99, "step": 1,
-                    "tooltip": "Layer number appended to plate tasks (0 = none): bg -> bg02.",
-                }),
-                "parent_path": ("STRING", {
-                    "default": "", "multiline": False,
-                    "tooltip": (
+                ),
+                io.String.Input(
+                    "parent_path", default="", optional=True,
+                    tooltip=(
                         "Optional sub-path under the output folder, e.g. "
                         "'SHW/SEQ' or '%date:yyyy-MM-dd%'."
                     ),
-                }),
-                "first_frame": ("INT", {
-                    "default": 1001, "min": 0, "max": 9999999, "step": 1,
-                    "tooltip": "First frame of the work range (plate head). Convention: 1001.",
-                }),
-                "shot_padding": ("INT", {"default": 4, "min": 1, "max": 8}),
-                "version_padding": ("INT", {"default": 3, "min": 1, "max": 8}),
-                "frame_padding": ("INT", {"default": 4, "min": 1, "max": 10}),
-                "file_extension": (EXTENSIONS, {
-                    "default": "exr",
-                    "tooltip": (
-                        "File extension for the 'extension' and 'example_filename' "
-                        "outputs. ComfyUI savers pick their own format widget-side; "
-                        "this drives downstream nodes and the preview."
-                    ),
-                }),
-                "schema": (schemas, {
-                    "default": schemas[0],
-                    "tooltip": (
-                        "Naming schema from the schemas/ folder: token rules, "
-                        "delimiters, token order and folder depth. Drop your own "
-                        "JSON in there to add a studio convention."
-                    ),
-                }),
-                "template_override": ("STRING", {
-                    "default": "", "multiline": True,
-                    "tooltip": (
+                ),
+                io.String.Input(
+                    "template_override", default="", multiline=True, optional=True,
+                    tooltip=(
                         "Override the schema's templates for one node. Use "
-                        "{token}, [optional groups] and / for folder levels, e.g.\n"
-                        "{show}/{seq}/{show}_{seq}_{shot}_{task}[_{vendor}]_{version}"
+                        "{token}, [optional groups] and / for folder levels, "
+                        "e.g.\n{show}/{seq}/{show}_{seq}_{shot}_{task}"
+                        "[_{vendor}]_{version}"
                     ),
-                }),
-                "custom_tokens": ("STRING", {
-                    "default": "", "multiline": True,
-                    "tooltip": (
-                        "Extra tokens for the template, one 'name=value' per line, "
-                        "e.g. episode=101. Reference them as {episode}."
+                ),
+                io.String.Input(
+                    "custom_tokens", default="", multiline=True, optional=True,
+                    tooltip=(
+                        "Extra tokens for the template, one 'name=value' per "
+                        "line, e.g. episode=101. Reference them as {episode}. "
+                        "A name that matches a token above overrides it."
                     ),
-                }),
-            },
-        }
-
-    RETURN_TYPES = (
-        "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "INT", "STRING",
-    )
-    RETURN_NAMES = (
-        "filename_prefix", "folder_name", "basename", "shot_id",
-        "extension", "example_filename", "first_frame", "report",
-    )
-    OUTPUT_TOOLTIPS = (
-        "Connect to filename_prefix on Save Image / Save Image (Advanced) / video savers.",
-        "Folder levels the schema renders (empty when there are none).",
-        "Filename without frame number or extension.",
-        "Show_Sequence_Shot identifier.",
-        "File extension, lowercase and without a leading dot.",
-        "Fully formed example filename including frame and extension.",
-        "First frame of the work range.",
-        "Human-readable breakdown plus any validation warnings.",
-    )
-    FUNCTION = "build"
-    CATEGORY = "VFX/naming"
-    DESCRIPTION = (
-        "Build a VFX naming convention filename_prefix from a JSON schema:\n"
-        "<SHOW>_<SEQ>_<SHOT>_<TASK>_<VENDOR>_v<VERSION>.<FRAME>.<EXT>"
-    )
-
-    def build(
-        self,
-        show_code,
-        sequence_code,
-        shot_number,
-        task,
-        vendor_id,
-        version,
-        sequence_subfolder,
-        strict,
-        task_custom="",
-        plate_layer=0,
-        parent_path="",
-        first_frame=1001,
-        shot_padding=4,
-        version_padding=3,
-        frame_padding=4,
-        file_extension="exr",
-        example_extension=None,
-        schema="vfx_default",
-        template_override="",
-        custom_tokens="",
-    ):
-        warnings = []
-        config = load_schema(schema)
-
-        task_str, is_plate = _resolve_task(
-            config, task, task_custom, plate_layer, strict, warnings,
+                ),
+                io.String.Input(
+                    "preview", default="", multiline=True, optional=True,
+                    tooltip=(
+                        "Live result, refreshed as you type - nothing needs to "
+                        "run. Filled in by web/vfx_naming.js and ignored on "
+                        "execution; edits to it have no effect."
+                    ),
+                ),
+            ],
+            outputs=[
+                io.String.Output(
+                    "filename_prefix",
+                    tooltip="Connect to filename_prefix on Save Image / Save "
+                            "Image (Advanced) / video savers.",
+                ),
+                io.String.Output(
+                    "folder_name",
+                    tooltip="Folder levels the schema renders (empty when "
+                            "there are none).",
+                ),
+                io.String.Output(
+                    "directory",
+                    tooltip="Absolute folder, from the schema's 'root' levels "
+                            "(a mount point) plus folder_name. Empty when the "
+                            "schema declares no root. For savers that take a "
+                            "real path - ComfyUI's own reject one.",
+                ),
+                io.String.Output(
+                    "full_path",
+                    tooltip="directory + basename, without frame or extension. "
+                            "Empty when the schema declares no root.",
+                ),
+                io.String.Output(
+                    "basename",
+                    tooltip="Filename without frame number or extension.",
+                ),
+                io.String.Output(
+                    "shot_id",
+                    tooltip="The schema's shot identifier, empty when it "
+                            "declares no 'shot_id' template.",
+                ),
+                io.String.Output(
+                    "extension",
+                    tooltip="File extension, lowercase and without a leading dot.",
+                ),
+                io.String.Output(
+                    "example_filename",
+                    tooltip="Fully formed example filename including frame and "
+                            "extension.",
+                ),
+                io.Int.Output(
+                    "first_frame",
+                    tooltip="First frame of the work range.",
+                ),
+                io.String.Output(
+                    "report",
+                    tooltip="Human-readable breakdown plus any validation "
+                            "warnings.",
+                ),
+            ],
         )
 
-        extension = (example_extension or file_extension or "").strip().lstrip(".").lower()
-        if not extension:
-            raise NamingError("File extension cannot be empty.")
-
-        if shot_number % 10 != 0:
-            warnings.append(
-                f"Note: shot number {shot_number} is not a multiple of 10. The "
-                "convention increments shots by tens, but off-grid shot numbers "
-                "are accepted."
-            )
-
-        raw = {
-            "show": show_code,
-            "seq": sequence_code,
-            "shot": shot_number,
-            "task": task_str,
-            "vendor": vendor_id,
-            "version": version,
-            "frame": first_frame,
-            "ext": extension,
-        }
-        pads = {"shot": shot_padding, "version": version_padding, "frame": frame_padding}
+    @classmethod
+    def execute(cls, schema, folders=True, strict=True, parent_path="",
+                template_override="", custom_tokens="", preview=""):
+        warnings = []
+        # The DynamicCombo hands over {"schema": key, <token>: value, ...}.
+        supplied = schema if isinstance(schema, dict) else {"schema": str(schema)}
+        key = supplied.get("schema")
+        config = load_schema(key)
 
         values = {}
-        for name, value in raw.items():
-            values[name] = config.spec(name).format(
-                value, strict, warnings, pad_override=pads.get(name),
+        for name, spec in config.tokens.items():
+            value, custom, layer = _token_values(spec, supplied.get(name))
+            values[name] = spec.resolve(
+                value, strict, warnings, custom=custom, layer=layer,
             )
 
-        # Extra tokens declared by the schema but not backed by a widget.
+        # Extra tokens for the template; a matching name overrides its widget.
         extras = parse_custom_tokens(custom_tokens, strict)
         for name, value in extras.items():
             spec = config.tokens.get(name)
-            values[name] = spec.format(value, strict, warnings) if spec else value
-        for name, spec in config.tokens.items():
-            values.setdefault(name, "" if spec.optional else "")
+            values[name] = spec.resolve(value, strict, warnings) if spec else value
 
         config.apply_rules(values, warnings)
 
         prefix_body, basename, unknown = config.render_prefix(
             values,
-            include_folders=sequence_subfolder,
+            include_folders=folders,
             override=template_override,
             strict=strict,
         )
@@ -360,60 +363,162 @@ class VFXNamingConvention:
 
         parent = _sanitize_path(parent_path, strict, warnings)
         filename_prefix = "/".join(s for s in (parent, prefix_body) if s)
-
         folder_name = "/".join(prefix_body.split("/")[:-1])
-        shot_id = "_".join(v for v in (values["show"], values["seq"], values["shot"]) if v)
+        shot_id = config.render_shot_id(values)
+
+        # The absolute location, for savers that take a real path. `parent_path`
+        # is a sub-path of ComfyUI's output folder, so it plays no part here.
+        root = config.render_root(values)
+        directory = "/".join(s for s in (root, folder_name) if s) if root else ""
+        full_path = "/".join(s for s in (directory, basename) if s) if directory else ""
         example_filename, _ = render(
             config.filename, dict(values, basename=basename), strict=False,
         )
 
-        report_lines = [
-            f"SCHEMA: {config.label}  ({schema})",
-        ]
-        if config.description:
-            report_lines.append(f"  {config.description}")
-        report_lines += [
-            "",
-            f"  Show code     : {values['show']}",
-            f"  Sequence code : {values['seq']}",
-            f"  Shot number   : {values['shot']}",
-            f"  Task          : {values['task']}"
-            + (f"  ({PLATE_LABELS.get(task_str[:2], 'plate')})" if is_plate else "")
-            + ("  (approved final)" if task_str == FINAL_TASK else ""),
-            f"  Vendor id     : {values['vendor'] or '- (omitted)'}",
-            f"  Version       : {values['version']}",
-            f"  First frame   : {values['frame']}",
-            f"  Extension     : {extension}",
-        ]
-        for name in sorted(extras):
-            report_lines.append(f"  {name:<14}: {values.get(name, '')}  (custom)")
-        report_lines += [
-            "",
-            f"  Template      : {(template_override.strip() or '/'.join(config.folders + [config.file]))}",
-            f"  Shot ID       : {shot_id}",
-            f"  Folder        : {folder_name or '- (none)'}",
-            f"  Prefix        : {filename_prefix}",
-            f"  Example file  : {example_filename}",
-        ]
-        if warnings:
-            report_lines += ["", "WARNINGS:"] + [f"  ! {w}" for w in warnings]
+        # Two outputs name a token: a schema without 'ext' or 'frame' simply
+        # leaves them empty rather than failing.
+        extension = values.get("ext", "")
+        first_frame = _as_int(values.get("frame"), config.tokens.get("frame"))
 
-        return (
-            filename_prefix,
-            folder_name,
-            basename,
-            shot_id,
-            extension,
-            example_filename,
-            first_frame,
-            "\n".join(report_lines),
+        report = cls._report(
+            key, config, values, extras, template_override, shot_id,
+            folder_name, filename_prefix, example_filename, directory,
+            full_path, warnings,
         )
 
+        return io.NodeOutput(
+            filename_prefix, folder_name, directory, full_path, basename,
+            shot_id, extension, example_filename, first_frame, report,
+        )
 
-NODE_CLASS_MAPPINGS = {
-    "VFXNamingConvention": VFXNamingConvention,
-}
+    @staticmethod
+    def _report(key, config, values, extras, template_override, shot_id,
+                folder_name, filename_prefix, example_filename, directory,
+                full_path, warnings):
+        """Break the result down in the schema's own vocabulary."""
+        lines = [f"SCHEMA: {config.label}  ({key})"]
+        if config.description:
+            lines.append(f"  {config.description}")
+        lines.append("")
 
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "VFXNamingConvention": "VFX Naming Convention (Filename Prefix)",
-}
+        width = max([len(s.label) for s in config.tokens.values()] + [12])
+        for name, spec in config.tokens.items():
+            shown = values.get(name) or "- (omitted)"
+            suffix = "  (custom_tokens)" if name in extras else ""
+            lines.append(f"  {spec.label:<{width}} : {shown}{suffix}")
+        for name in sorted(n for n in extras if n not in config.tokens):
+            lines.append(f"  {name:<{width}} : {values.get(name, '')}  (custom_tokens)")
+
+        template = template_override.strip() or "/".join(config.folders + [config.file])
+        lines += [
+            "",
+            f"  {'Template':<{width}} : {template}",
+            f"  {'Shot ID':<{width}} : {shot_id or '- (none)'}",
+            f"  {'Folder':<{width}} : {folder_name or '- (none)'}",
+            f"  {'Prefix':<{width}} : {filename_prefix}",
+            f"  {'Example file':<{width}} : {example_filename}",
+        ]
+        if directory:
+            lines += [
+                f"  {'Directory':<{width}} : {directory}",
+                f"  {'Full path':<{width}} : {full_path}",
+            ]
+        if warnings:
+            lines += ["", "WARNINGS:"] + [f"  ! {w}" for w in warnings]
+        return "\n".join(lines)
+
+
+# --- Live preview ------------------------------------------------------------
+#
+# The node shows its result while you type, which needs the values before the
+# graph runs. Rather than reimplement the naming rules in JavaScript, the
+# frontend posts the widget values here and renders whatever comes back, so
+# Python stays the only place the convention is interpreted.
+
+PREVIEW_ROUTE = "/vfx_naming/preview"
+
+TOP_LEVEL_INPUTS = ("folders", "strict", "parent_path", "template_override",
+                    "custom_tokens")
+
+
+def _nest(flat):
+    """
+    Rebuild ComfyUI's dotted widget names into the shape `execute()` expects.
+
+    A DynamicCombo's own value shares its name with the group it opens, which is
+    how ComfyUI resolves it too: `{"schema": "studio", "schema.show": "A"}`
+    becomes `{"schema": {"schema": "studio", "show": "A"}}`. Shallow keys are
+    handled first, so the scalar is always in place before the group needs it.
+    """
+    nested = {}
+    for key in sorted(flat, key=lambda k: k.count(".")):
+        parts = key.split(".")
+        cursor = nested
+        for part in parts[:-1]:
+            existing = cursor.get(part)
+            if not isinstance(existing, dict):
+                cursor[part] = {} if existing is None else {part: existing}
+            cursor = cursor[part]
+        leaf = parts[-1]
+        existing = cursor.get(leaf)
+        if isinstance(existing, dict):
+            existing[leaf] = flat[key]
+        else:
+            cursor[leaf] = flat[key]
+    return nested
+
+
+def preview(widgets):
+    """Render the node's outputs from raw widget values. Never raises."""
+    try:
+        values = _nest(widgets or {})
+        supplied = values.get("schema")
+        if not isinstance(supplied, dict):
+            return {"ok": False, "error": "No schema selected yet."}
+
+        options = {name: values[name] for name in TOP_LEVEL_INPUTS if name in values}
+        # Permissive: a half-typed value should show a preview, not an error.
+        options["strict"] = False
+
+        result = VFXNamingConvention.execute(schema=supplied, **options).result
+        names = [o.display_name for o in VFXNamingConvention.define_schema().outputs]
+        fields = dict(zip(names, result))
+
+        rows = [("prefix", "filename_prefix"), ("example", "example_filename"),
+                ("directory", "directory"), ("full path", "full_path")]
+        width = max(len(label) for label, _ in rows)
+        lines = [f"{label:<{width}} : {fields[key]}"
+                 for label, key in rows if fields.get(key)]
+
+        warned = fields["report"].split("WARNINGS:")
+        if len(warned) > 1:
+            lines += [""] + [w.strip() for w in warned[1].strip().splitlines()]
+
+        return {"ok": True, "text": "\n".join(lines), "fields": fields}
+    except Exception as error:  # a preview must never break the server
+        return {"ok": False, "error": f"{type(error).__name__}: {error}"}
+
+
+def _register_preview_route():
+    """Expose `preview()` over HTTP when running inside a ComfyUI server."""
+    try:
+        from server import PromptServer
+        from aiohttp import web
+    except Exception:
+        return False
+    instance = getattr(PromptServer, "instance", None)
+    if instance is None or not hasattr(instance, "routes"):
+        return False
+
+    @instance.routes.post(PREVIEW_ROUTE)
+    async def _preview(request):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        return web.json_response(preview(body.get("widgets") or {}))
+
+    return True
+
+
+PREVIEW_ROUTE_REGISTERED = _register_preview_route()

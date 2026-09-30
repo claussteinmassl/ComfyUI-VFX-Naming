@@ -3,3 +3,15 @@ __pycache__/
 .DS_Store
 *.egg-info/
 .venv/
+
+# Local working material, not part of the node
+docs/
+
+# Browser automation output (screenshots, mockups)
+.playwright-mcp/
+
+# Subagent-driven development scratch
+.superpowers/
+
+# Local planning notes
+tasks/
