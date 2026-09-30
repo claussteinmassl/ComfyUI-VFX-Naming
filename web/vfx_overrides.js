@@ -19,9 +19,13 @@ import {
 //     renderers, the last mirrored value of each widget is remembered. A value
 //     that differs from it on the next tick was changed by the user, and
 //     turns the field into an override.
-//   * Row states. The label carries a glyph (reactive in both renderers); the
-//     canvas renderer additionally dims inherited rows and outlines overridden
-//     ones; locked rows use the stock `disabled` state.
+//   * Row states. The canvas renderer draws a switch (a pill) at the left of
+//     each field row, dims inherited rows, outlines overridden ones and puts a
+//     reset icon (↺) after their label; the Vue renderer shows a glyph in the
+//     label and a ↺ span instead. Locked rows use the stock `disabled` state.
+//   * Stash. Switching an override off keeps its values in
+//     `node.properties.vfxStash` (saved with the workflow); switching it on
+//     again restores them. ↺ discards an override together with its stash.
 //
 // State lives by field name in `overrides` and on the node, never on widget
 // objects alone: the DynamicCombo recreates token widgets on every rebuild.
@@ -29,7 +33,11 @@ import {
 export const PIPE_INPUT = "naming_pipe";
 export const ACCENT = "#f0a030";
 const GLYPH = { inherited: "○ ", overridden: "● ", locked: "⛓ " };
+const RESET = "↺";
 const MAX_HOPS = 32;
+// How many sync passes a pending restore waits for sub-widgets that a token's
+// rebuild has not created (yet). A preset without them never creates them.
+const RESTORE_PASSES = 4;
 
 /** The naming node that feeds this one, following legacy Reroute nodes. */
 export function upstreamOf(node) {
@@ -56,6 +64,20 @@ export function readOverrides(node) {
 export function writeOverrides(node, overrides) {
     const widget = findWidget(node, OVERRIDES_WIDGET);
     if (widget) widget.value = JSON.stringify([...overrides].sort());
+}
+
+// The remembered values of switched-off overrides, by field and widget name:
+// `{ task: { "schema.task": "bg", "schema.task.task_layer": 3 } }`. A node
+// property, so the workflow saves it; Python never reads it.
+const stashOf = (node) => node.properties?.vfxStash ?? {};
+
+export const hasStash = (node, field) => !!stashOf(node)[field];
+
+function dropStash(node, field) {
+    const stash = node.properties?.vfxStash;
+    if (stash && field in stash) delete stash[field];
+    if (stash && !Object.keys(stash).length) delete node.properties.vfxStash;
+    if (node.__vfxPending) delete node.__vfxPending[field];
 }
 
 function overridable(node, field) {
@@ -113,6 +135,9 @@ function mirror(node, source, overrides) {
             (field) => !fields.includes(field) || !overridable(node, field));
         for (const field of unknown) overrides.delete(field);
         if (unknown.length) writeOverrides(node, overrides);
+        for (const field of Object.keys(stashOf(node))) {
+            if (!fields.includes(field)) dropStash(node, field);
+        }
         return true;
     }
 
@@ -131,9 +156,11 @@ function mirror(node, source, overrides) {
 
         if (state === "inherited" && mirrored.has(widget)
                 && widget.value !== mirrored.get(widget)) {
-            // Changed since we last mirrored it: the user edited it.
+            // Changed since we last mirrored it: the user edited it. The fresh
+            // edit wins over any remembered value.
             overrides.add(field);
             writeOverrides(node, overrides);
+            dropStash(node, field);
             forget(node, field);
             changed = true;
             continue;
@@ -149,13 +176,34 @@ function mirror(node, source, overrides) {
 
 // A label as it was before decoration. The Vue renderer keeps widget state
 // (label included) per node id, so a new node that reuses an id can start out
-// with an old glyph already in its label.
-const GLYPH_PREFIX = /^(?:[○●⛓] )+/;
+// with an old glyph or padding already in its label.
+const GLYPH_PREFIX = /^(?:[○●⛓] |\u00a0)+/;
+
+// Canvas rows make room for the switch with non-breaking spaces rather than a
+// glyph: the label starts at x = 35 on rows with stepper arrows and at x = 30
+// on the others, a non-breaking space is 3.4 px wide in the widget font
+// (12px Inter, frontend 1.52.7), and the switch ends at x = 62 / 48.
+const PAD = { stepped: "\u00a0".repeat(9), plain: "\u00a0".repeat(7) };
+
+const vueMode = () => !!globalThis.LiteGraph?.vueNodesMode;
+
+/**
+ * Whether this row gets the canvas switch (and so a padded, glyph-free label):
+ * a widget our draw wrapper wraps (or will wrap), in the canvas renderer.
+ */
+const drawsSwitch = (widget) => !vueMode() && (!!widget.__vfxDraw
+    || (typeof widget.drawWidget === "function" && !delegatesDraw(widget)));
+
+function composeLabel(widget, state, glyph, base) {
+    if (!state || !glyph) return base;
+    if (drawsSwitch(widget)) return (stepped(widget) ? PAD.stepped : PAD.plain) + base;
+    return GLYPH[state] + base;
+}
 
 function decorate(widget, state, glyph) {
     if (!("__vfxLabel" in widget)) widget.__vfxLabel = widget.label?.replace(GLYPH_PREFIX, "");
     const base = widget.__vfxLabel || widget.name.split(".").pop();
-    const label = state && glyph ? GLYPH[state] + base : base;
+    const label = composeLabel(widget, state, glyph, base);
     if (widget.label !== label) widget.label = label;
 
     const locked = state === "locked";
@@ -164,14 +212,16 @@ function decorate(widget, state, glyph) {
 
     widget.__vfxState = state;
     widget.__vfxGlyph = !!glyph;
+    widget.__vfxSwitch = !!(state && glyph) && drawsSwitch(widget);
     if (widget.element?.style) {
         // DOM widgets (multiline text) sit on top of the canvas: style the element.
         widget.element.style.opacity = state === "inherited" ? "0.5" : "";
         widget.element.style.outline = state === "overridden" ? `1.5px solid ${ACCENT}` : "";
-        // A textarea shows its name as placeholder rather than a label.
+        // A textarea shows its name as placeholder rather than a label; it
+        // never gets the switch, so the placeholder keeps the glyph.
         if ("placeholder" in widget.element) {
             widget.__vfxPlaceholder ??= widget.element.placeholder;
-            widget.element.placeholder = label;
+            widget.element.placeholder = state && glyph ? GLYPH[state] + base : base;
         }
     }
     wrapCanvasDraw(widget);
@@ -189,10 +239,13 @@ function undecorate(widget) {
         }
     }
     widget.__vfxState = null;
+    widget.__vfxSwitch = false;
+    widget.__vfxResetZone = null;
 }
 
 /**
- * Canvas renderer only: dim inherited rows, outline overridden ones.
+ * Canvas renderer only: dim inherited rows, outline overridden ones, and draw
+ * the switch and the reset icon (see drawControls()).
  *
  * Only widgets whose drawWidget() draws by itself are wrapped. DOM widgets
  * and legacy custom widgets (LegacyWidget) implement drawWidget() by calling
@@ -230,19 +283,24 @@ function wrapCanvasDraw(widget) {
             ctx.stroke();
             ctx.restore();
         }
+        this.__vfxResetZone = null;
+        if (this.__vfxSwitch && !lowQuality) drawControls(this, ctx, width, y, height);
     };
 
-    // A click on the glyph toggles the row; anywhere else the widget behaves
-    // as usual. processWidgetClick() asks onPointerDown() first.
+    // A click on the switch toggles the row, a click on ↺ resets it; anywhere
+    // else the widget behaves as usual (arrows, dropdown, drag, prompt).
+    // processWidgetClick() asks onPointerDown() first.
     const original = widget.onPointerDown;
     widget.onPointerDown = function (pointer, node, canvas) {
-        if (togglable(this)) {
-            const x = canvas.graph_mouse[0] - node.pos[0];
-            const [from, to] = glyphZone(this);
-            if (x >= from && x <= to) {
-                pointer.onClick = () => toggle(node, fieldOf(this));
-                return true;
-            }
+        const x = canvas.graph_mouse[0] - node.pos[0];
+        const field = fieldOf(this);
+        if (this.__vfxSwitch && togglable(this) && within(x, switchZone(this))) {
+            pointer.onClick = () => toggle(node, field);
+            return true;
+        }
+        if (this.__vfxState === "overridden" && within(x, this.__vfxResetZone)) {
+            pointer.onClick = () => resetOverride(node, field);
+            return true;
         }
         return original ? original.call(this, pointer, node, canvas) : false;
     };
@@ -251,36 +309,182 @@ function wrapCanvasDraw(widget) {
 const delegatesDraw = (widget) =>
     !!widget.element || !!widget.isDOMWidget || "draw" in widget;
 
-// Where the glyph sits on a canvas row, in node-local x (measured on a 2x zoom
-// screenshot against frontend 1.52.7). The glyph is drawn at x = 31..35 on
-// text and toggle rows and at x = 36..40 on rows with stepper arrows (number,
-// combo); the zones add a few px of slack and end before the label text. The
-// socket gutter (x < 15) belongs to the input slot. The stepper's left arrow
-// is drawn at x = 21..31 and keeps x < 33 as its hit area.
-function glyphZone(widget) {
-    return widget.type === "number" || widget.type === "combo" ? [33, 45] : [26, 39];
+const stepped = (widget) => widget.type === "number" || widget.type === "combo";
+
+const within = (x, zone) => !!zone && x >= zone[0] && x <= zone[1];
+
+// Where the switch sits on a canvas row, in node-local x (frontend 1.52.7).
+// The stock stepper widgets (number, combo) decrement on any click at x < 40
+// and draw their left arrow at x = 21..31, so on those rows the switch starts
+// after that zone; text and toggle rows have no arrows and start it at the
+// widget's rounded edge. The click zones add a pixel or two of slack.
+const switchSpan = (widget) => (stepped(widget) ? [42, 62] : [28, 48]);
+const switchZone = (widget) => (stepped(widget) ? [41, 64] : [27, 50]);
+
+// Where the stock widgets start their label: margin * 2 plus the left padding
+// of drawTruncatingText() (5 on stepper rows, 0 on text rows; toggle rows draw
+// the label at margin * 2).
+const labelStart = (widget) => (stepped(widget) ? 35 : 30);
+
+/**
+ * The switch (or, on locked rows, a chain mark in its place) and, on
+ * overridden rows, ↺ after the label. The reset icon's hit zone is stored on
+ * the widget for onPointerDown(); it is skipped, and has no zone, when it
+ * would run into the value text.
+ */
+function drawControls(widget, ctx, width, y, height) {
+    const [from, to] = switchSpan(widget);
+    const middle = y + height * 0.5;
+    const state = widget.__vfxState;
+    ctx.save();
+    if (state === "locked") {
+        ctx.fillStyle = widget.secondary_text_color ?? "#999";
+        ctx.font = "11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(GLYPH.locked.trim(), (from + to) / 2, middle);
+        ctx.restore();
+        return;
+    }
+    const on = state === "overridden";
+    const pillHeight = 11;
+    ctx.fillStyle = on ? ACCENT : "#5a5a5a";
+    ctx.beginPath();
+    ctx.roundRect(from, middle - pillHeight / 2, to - from, pillHeight, pillHeight / 2);
+    ctx.fill();
+    ctx.fillStyle = on ? "#fff" : "#b8b8b8";
+    ctx.beginPath();
+    ctx.arc(on ? to - pillHeight / 2 : from + pillHeight / 2, middle, pillHeight / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    if (on) drawReset(widget, ctx, width, y, height);
+}
+
+function drawReset(widget, ctx, width, y, height) {
+    // ctx still carries the font the widget drew its label with.
+    const labelWidth = ctx.measureText(widget.displayName ?? "").width;
+    const labelX = labelStart(widget);
+    let valueLeft;
+    if (widget.type === "toggle") {
+        const text = widget.value ? widget.options?.on || "true" : widget.options?.off || "false";
+        valueLeft = width - 40 - ctx.measureText(text).width;
+    } else {
+        // Mirrors drawTruncatingText(): no icon once the label gets truncated.
+        const valueWidth = ctx.measureText(String(widget._displayValue ?? "")).width;
+        const totalWidth = width - labelX - 30 - (stepped(widget) ? 20 : 0);
+        if (labelWidth + 5 + valueWidth > totalWidth) return;
+        valueLeft = labelX + totalWidth - valueWidth;
+    }
+    ctx.save();
+    ctx.font = `12px ${ctx.font.replace(/^.*?\d+(?:\.\d+)?px\s*/, "") || "sans-serif"}`;
+    const iconX = labelX + labelWidth + 4;
+    const iconWidth = ctx.measureText(RESET).width;
+    if (iconX + iconWidth + 4 <= valueLeft) {
+        ctx.fillStyle = widget.secondary_text_color ?? "#999";
+        ctx.textAlign = "left";
+        ctx.fillText(RESET, iconX, y + height * 0.7);
+        widget.__vfxResetZone = [iconX - 2, iconX + iconWidth + 3];
+    }
+    ctx.restore();
 }
 
 const togglable = (widget) =>
     widget.__vfxGlyph && (widget.__vfxState === "inherited" || widget.__vfxState === "overridden");
 
-/** Flip one field between inherited and overridden. */
-export function toggle(node, field) {
-    if (!field) return;
-    const overrides = readOverrides(node);
-    if (overrides.has(field)) overrides.delete(field);
-    else overrides.add(field);
-    writeOverrides(node, overrides);
-    forget(node, field);   // an inherited field re-mirrors on this pass
+function finish(node) {
     syncOverrides(node);
     node.setDirtyCanvas?.(true, true);
 }
 
+/** Switch a field's override off, remembering its values for enableOverride(). */
+export function disableOverride(node, field) {
+    if (!field) return;
+    const values = {};
+    for (const widget of node.widgets ?? []) {
+        if (fieldOf(widget) === field) values[widget.name] = widget.value;
+    }
+    node.properties ??= {};
+    node.properties.vfxStash = { ...stashOf(node), [field]: values };
+    if (node.__vfxPending) delete node.__vfxPending[field];
+    const overrides = readOverrides(node);
+    overrides.delete(field);
+    writeOverrides(node, overrides);
+    forget(node, field);   // the field re-mirrors on this pass
+    finish(node);
+}
+
+/** Switch a field's override on, restoring what disableOverride() remembered. */
+export function enableOverride(node, field) {
+    if (!field) return;
+    const overrides = readOverrides(node);
+    overrides.add(field);
+    writeOverrides(node, overrides);
+    const values = stashOf(node)[field];
+    dropStash(node, field);
+    if (values) {
+        // The token's own row first: on a DynamicCombo, setting it rebuilds
+        // the sub-widgets the rest of the values belong to.
+        const own = node.widgets?.find((w) => fieldOf(w) === field && isFieldRow(w, field));
+        const rest = { ...values };
+        if (own && own.name in rest) {
+            if (own.value !== rest[own.name]) own.value = rest[own.name];
+            delete rest[own.name];
+        }
+        if (Object.keys(rest).length) {
+            node.__vfxPending ??= {};
+            node.__vfxPending[field] = { values: rest, passes: RESTORE_PASSES };
+        }
+    }
+    finish(node);
+}
+
+/** Discard a field's override for good: inherited, nothing remembered. */
+export function resetOverride(node, field) {
+    if (!field) return;
+    const overrides = readOverrides(node);
+    overrides.delete(field);
+    writeOverrides(node, overrides);
+    dropStash(node, field);
+    forget(node, field);
+    finish(node);
+}
+
+/**
+ * Apply restored sub-widget values once their widgets exist. A value whose
+ * widget has not shown up after a few passes is dropped (the restored token
+ * may simply not reveal it).
+ */
+function applyPending(node, overrides) {
+    const pending = node.__vfxPending;
+    for (const [field, entry] of Object.entries(pending)) {
+        if (!overrides.has(field)) { delete pending[field]; continue; }
+        // In row order, so a nested token is set before the widgets it reveals.
+        for (const [name, value] of Object.entries(entry.values)) {
+            const widget = findWidget(node, name);
+            if (!widget) continue;
+            if (widget.value !== value) widget.value = value;
+            delete entry.values[name];
+        }
+        entry.passes -= 1;
+        if (!Object.keys(entry.values).length || entry.passes <= 0) delete pending[field];
+    }
+    if (!Object.keys(pending).length) delete node.__vfxPending;
+}
+
+/** Flip one field between inherited and overridden, keeping switched-off values. */
+export function toggle(node, field) {
+    if (!field) return;
+    if (readOverrides(node).has(field)) disableOverride(node, field);
+    else enableOverride(node, field);
+}
+
 export function inheritAll(node) {
     writeOverrides(node, new Set());
+    if (node.properties) delete node.properties.vfxStash;
+    delete node.__vfxPending;
     forget(node);
-    syncOverrides(node);
-    node.setDirtyCanvas?.(true, true);
+    finish(node);
 }
 
 // Vue nodes renderer. There is no API to decorate a widget row, so this reads
@@ -290,6 +494,10 @@ export function inheritAll(node) {
 // auto-override on edit and the context menu still work.
 const ROW = ".lg-node-widget";
 const LABEL = '[data-testid="widget-layout-field-label"]';
+const RESET_SPAN = "[data-vfx-reset]";
+
+/** The label a Vue label cell shows, without our ↺ span. */
+const labelText = (cell) => cell?.textContent?.replace(RESET, "").trim();
 
 /**
  * The widget a Vue label cell shows. With `fieldRowsOnly` (clicks), only a
@@ -297,11 +505,20 @@ const LABEL = '[data-testid="widget-layout-field-label"]';
  * its label. Styling also accepts sub-widgets, preferring field rows.
  */
 function widgetForLabel(node, cell, fieldRowsOnly = true) {
-    const text = cell?.textContent?.trim();
+    const text = labelText(cell);
     const shows = (w) => (w.label ?? w.name) === text;
     const row = node.widgets?.find((w) => shows(w) && isFieldRow(w, fieldOf(w)));
     if (row || fieldRowsOnly) return row ?? null;
     return node.widgets?.find(shows) ?? null;
+}
+
+/** The naming node a Vue element belongs to, or null. */
+function nodeOfElement(element) {
+    const id = element?.closest?.("[data-node-id]")?.dataset?.nodeId;
+    if (id == null) return null;
+    const graph = app.canvas?.graph ?? app.graph;
+    const node = graph?.getNodeById?.(id) ?? graph?.getNodeById?.(Number(id));
+    return classOf(node) === NODE_CLASS ? node : null;
 }
 
 /** Style the node's Vue rows after their state. The Vue renderer remounts rows, so this runs every tick. */
@@ -317,23 +534,101 @@ export function decorateVue(node) {
         if (value?.style) value.style.opacity = state === "inherited" ? "0.45" : "";
         cell.style.color = state === "overridden" ? ACCENT : "";
         cell.style.cursor = widget && togglable(widget) ? "pointer" : "";
+        decorateResetSpan(cell, state === "overridden" && !!widget && togglable(widget));
     }
+}
+
+function decorateResetSpan(cell, wanted) {
+    const existing = cell.querySelector(RESET_SPAN);
+    if (!wanted) { existing?.remove(); return; }
+    if (existing) return;
+    const span = document.createElement("span");
+    span.dataset.vfxReset = "";
+    span.textContent = RESET;
+    span.title = "Reset override (discard the value)";
+    span.style.marginLeft = "6px";
+    span.style.cursor = "pointer";
+    span.style.color = "var(--p-text-muted-color, #999)";
+    cell.appendChild(span);
 }
 
 document.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     const cell = event.target?.closest?.(`${ROW} ${LABEL}`);
     if (!cell) return;
-    const id = cell.closest("[data-node-id]")?.dataset?.nodeId;
-    const graph = app.canvas?.graph ?? app.graph;
-    const node = graph?.getNodeById?.(id) ?? graph?.getNodeById?.(Number(id));
-    if (classOf(node) !== NODE_CLASS) return;
+    const node = nodeOfElement(cell);
+    if (!node) return;
     const widget = widgetForLabel(node, cell);
     if (!widget || !togglable(widget)) return;
     event.preventDefault();
     event.stopPropagation();
+    if (event.target.closest(RESET_SPAN)) {
+        if (widget.__vfxState === "overridden") resetOverride(node, fieldOf(widget));
+        return;
+    }
     toggle(node, fieldOf(widget));
 }, true);
+
+// The row a Vue right-click landed on. The node menu is built right after the
+// contextmenu event, from getNodeMenuOptions(); rowMenuItems() reads this.
+const ROW_CLICK_MAX_AGE_MS = 1000;
+let vueRowClick = null;
+
+document.addEventListener("contextmenu", (event) => {
+    const row = event.target?.closest?.(ROW);
+    const node = row && nodeOfElement(row);
+    const cell = row?.querySelector(LABEL);
+    vueRowClick = node && cell
+        ? { node, widget: widgetForLabel(node, cell, false), time: performance.now() }
+        : null;
+}, true);
+
+/** The widget under the pointer that opened the node's context menu, if any. */
+function widgetUnderPointer(node) {
+    if (vueMode()) {
+        const click = vueRowClick;
+        const fresh = click && performance.now() - click.time < ROW_CLICK_MAX_AGE_MS;
+        return fresh && click.node === node ? click.widget : null;
+    }
+    const [x, y] = app.canvas?.graph_mouse ?? [];
+    if (x == null || typeof node.getWidgetOnPos !== "function") return null;
+    return node.getWidgetOnPos(x, y, true) ?? null;
+}
+
+/** Actions for the row under the pointer: override on/off and ↺ reset. */
+export function rowMenuItems(node) {
+    if (classOf(node) !== NODE_CLASS || !upstreamOf(node).linked) return [];
+    const field = fieldOf(widgetUnderPointer(node));
+    if (!field) return [];
+    const overrides = readOverrides(node);
+    const state = stateOf(node, field, overrides);
+    if (state === "locked") return [];
+    const items = [state === "overridden"
+        ? { content: `● Override ${field}: off (keep value)`, callback: () => disableOverride(node, field) }
+        : { content: `○ Override ${field}: on`, callback: () => enableOverride(node, field) }];
+    if (state === "overridden" || hasStash(node, field)) {
+        items.push({ content: `${RESET} Reset ${field}`, callback: () => resetOverride(node, field) });
+    }
+    return items;
+}
+
+/**
+ * Put the row actions at the top of the node's context menu. Items from the
+ * extension hook (getNodeMenuItems, see menuItems()) are appended at the end
+ * of the menu; items a node's getExtraMenuOptions() adds to `options` come
+ * first. The Vue renderer's menu files both under "Extensions", in this order.
+ */
+export function installRowMenu(node) {
+    if (node.__vfxRowMenu) return;
+    node.__vfxRowMenu = true;
+    const original = node.getExtraMenuOptions;
+    node.getExtraMenuOptions = function (canvas, options) {
+        const extra = original?.call(this, canvas, options);
+        const items = rowMenuItems(this);
+        if (items.length) options.unshift(...items, null);
+        return extra;
+    };
+}
 
 /** Entries for the node's right-click menu (canvas and Vue renderer alike). */
 export function menuItems(node) {
@@ -440,6 +735,7 @@ function ensureCollapse(node, linked) {
  * stops, and the preview shows "(from pipe)" instead of a name it cannot know.
  */
 export function syncOverrides(node) {
+    if (node.__vfxPending) applyPending(node, readOverrides(node));
     const { linked, source } = upstreamOf(node);
     node.__vfxUnresolved = linked && !source;
     if (!linked) {

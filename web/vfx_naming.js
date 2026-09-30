@@ -3,7 +3,7 @@ import {
     NODE_CLASS, OVERRIDES_WIDGET, PREVIEW_WIDGET, applyVisibility, classOf,
     loadSchemaFlags,
 } from "./vfx_widgets.js";
-import { menuItems, syncOverrides } from "./vfx_overrides.js";
+import { installRowMenu, menuItems, syncOverrides } from "./vfx_overrides.js";
 
 // Grid stepping for the VFX Naming Convention node's numeric tokens.
 //
@@ -290,6 +290,7 @@ app.registerExtension({
             widget.element.readOnly = true;
             widget.element.style.opacity = "0.85";
         }
+        installRowMenu(node);   // row actions at the top of the context menu
         watch(node);
     },
 });

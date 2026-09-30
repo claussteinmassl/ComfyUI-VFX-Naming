@@ -285,26 +285,53 @@ Overriding the schema itself is not supported.
 ### Row states
 
 Only while `naming_pipe` is connected, every field row is in one of three
-states, shown as a glyph at the start of the row's label:
+states:
 
-| Glyph | State | Meaning |
-|---|---|---|
-| `○ name` | inherited | value comes from the upstream node and follows it live; the row is drawn dimmed |
-| `● name` | overridden | this node's own value is used instead of the upstream one; the row gets an orange outline/label |
-| `⛓ name` | locked | `overridable: false` in the schema, or the `schema` row itself — always inherited, no toggle |
+| State | Canvas renderer | Vue nodes renderer | Meaning |
+|---|---|---|---|
+| inherited | switch off (grey), row dimmed | `○ name` | value comes from the upstream node and follows it live |
+| overridden | switch on (orange), orange outline, `↺` after the label | `● name` in orange, `↺` after it | this node's own value is used instead of the upstream one |
+| locked | `⛓` in place of the switch | `⛓ name` | `overridable: false` in the schema, or the `schema` row itself — always inherited, no switch |
 
-Without a pipe connected, rows carry no glyph and behave exactly as before.
+Without a pipe connected, rows carry no switch or glyph and behave exactly as
+before. Multiline fields (`template_override`, `custom_tokens`) show the glyph
+in their placeholder in both renderers.
 
 ### Toggling a field
 
-- **Click the glyph** at the start of the row to flip it between inherited
-  and overridden.
-- **Edit an inherited value** — typing into the field overrides it
-  automatically, with no need to click the glyph first.
+- **Click the switch** at the left of the row (canvas renderer) to turn the
+  override off or on. On rows with stepper arrows the switch sits just right
+  of the left arrow; the arrows, the dropdown and number dragging keep
+  working everywhere else on the row.
+  - **Off keeps the value.** The row goes back to the inherited look and
+    shows the upstream value, but the node remembers what you had set,
+    including values of fields a token reveals (a plate's `task_layer`).
+  - **On restores it.** Switching the override back on brings the
+    remembered values back. They are saved with the workflow (in the node's
+    properties), so this also works after reloading.
+- **Click `↺`** after the label of an overridden row to discard the override
+  for good: the field goes back to inherited and the remembered value is
+  deleted, so switching it on again starts from the upstream value. When the
+  label and value leave no room for the icon, it is not drawn; use the
+  right-click action instead.
+- **Edit an inherited value** — typing into the field (or stepping it with
+  its arrows) overrides it automatically, with no need to click the switch
+  first. The fresh edit replaces any remembered value.
+- **Right-click a row** for its actions at the top of the menu:
+  "● Override task: off (keep value)" or "○ Override task: on", and
+  "↺ Reset task" when the field is overridden or has a remembered value. A
+  revealed row such as `task_layer` acts on its token (`task`).
 - **Right-click the node** → **VFX overrides** submenu: one entry per
   overridable field ("○ Override task" when inherited, "● Inherit task" when
-  overridden), plus **Inherit all** to clear every override on the node at
-  once (shown only once something is overridden).
+  overridden; inheriting keeps the value like the switch does), plus
+  **Inherit all** to clear every override and every remembered value on the
+  node at once (shown only once something is overridden).
+
+In the **Vue nodes renderer** the label glyph is the switch: click the label
+cell of a row to flip it (off keeps the value, on restores it, as above), and
+click the `↺` next to the label to reset it. Right-clicking a row adds the
+same row actions to the node menu, where the Vue renderer lists them first
+under **Extensions**.
 
 Switching a field back to inherited re-mirrors the upstream value
 immediately.
@@ -349,9 +376,10 @@ fields being overridden (and that override is allowed):
 ### Renderers
 
 Both the classic canvas renderer and the Vue nodes renderer are supported.
-In the Vue nodes renderer the extra row styling (the dimmed/outlined look
-beyond the glyph) is best effort; the glyph labels, auto-override on edit and
-the "VFX overrides" context menu always work in both renderers.
+The switch and the drawn `↺` belong to the canvas renderer. In the Vue nodes
+renderer the extra row styling (the dimmed look, the `↺` next to the label)
+is best effort; the glyph labels, auto-override on edit and the "VFX
+overrides" context menu always work in both renderers.
 
 ## Schemas — the convention is configuration
 
