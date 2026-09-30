@@ -640,7 +640,11 @@ export function menuItems(node) {
             content: overrides.has(field) ? `● Inherit ${field}` : `○ Override ${field}`,
             callback: () => toggle(node, field),
         }));
-    if (overrides.size) options.push(null, { content: "Inherit all", callback: () => inheritAll(node) });
+    // Also offered when every override is only switched off, so the remembered
+    // values can be discarded in one go.
+    if (overrides.size || Object.keys(stashOf(node)).length) {
+        options.push(null, { content: "Inherit all", callback: () => inheritAll(node) });
+    }
     return [null, { content: "VFX overrides", has_submenu: true, submenu: { options } }];
 }
 
