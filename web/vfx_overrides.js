@@ -86,13 +86,17 @@ export function fieldsOf(node) {
     return fields;
 }
 
-const memoryOf = (node) => (node.__vfxMirrored ??= new Map());
+// The last mirrored value per widget OBJECT, not per name: the DynamicCombo
+// recreates sub-widgets (a task's layer) whenever mirroring sets their token,
+// and a recreated widget starts at its default. Keyed by name, that default
+// would read as a user edit; keyed by object, the new widget has no memory
+// and is simply mirrored.
+const mirrored = new WeakMap();
 
-/** Forget what was mirrored for a field, so the next tick mirrors it afresh. */
-export function forget(node, field) {
-    const memory = memoryOf(node);
-    for (const name of [...memory.keys()]) {
-        if (fieldOf({ name }) === field) memory.delete(name);
+/** Forget what was mirrored for a field (or, without one, the whole node). */
+export function forget(node, field = null) {
+    for (const widget of node.widgets ?? []) {
+        if (field === null || fieldOf(widget) === field) mirrored.delete(widget);
     }
 }
 
@@ -101,7 +105,6 @@ function mirror(node, source, overrides) {
     const upstreamSchema = findWidget(source, SCHEMA_WIDGET)?.value;
     if (own && upstreamSchema != null && own.value !== upstreamSchema) {
         own.value = upstreamSchema;   // the DynamicCombo rebuilds the token widgets
-        memoryOf(node).clear();
         // The rebuild is synchronous. Drop overrides the new schema does not
         // allow (unknown or locked fields): Python refuses them, which is an
         // error in strict mode.
@@ -113,7 +116,6 @@ function mirror(node, source, overrides) {
         return true;
     }
 
-    const memory = memoryOf(node);
     let changed = false;
     // Iterate over a copy: setting a nested DynamicCombo (a task with layer
     // presets) splices its sub-widgets in and out of node.widgets. Widgets it
@@ -127,8 +129,8 @@ function mirror(node, source, overrides) {
         const upstream = findWidget(source, widget.name);
         if (!upstream) continue;
 
-        if (state === "inherited" && memory.has(widget.name)
-                && widget.value !== memory.get(widget.name)) {
+        if (state === "inherited" && mirrored.has(widget)
+                && widget.value !== mirrored.get(widget)) {
             // Changed since we last mirrored it: the user edited it.
             overrides.add(field);
             writeOverrides(node, overrides);
@@ -140,7 +142,7 @@ function mirror(node, source, overrides) {
             widget.value = upstream.value;
             changed = true;
         }
-        memory.set(widget.name, widget.value);
+        mirrored.set(widget, widget.value);
     }
     return changed;
 }
@@ -191,19 +193,34 @@ function undecorate(widget) {
 
 /**
  * Canvas renderer only: dim inherited rows, outline overridden ones.
- * DOM widgets are left alone: their drawWidget() calls draw() itself, so a
- * wrapper would recurse. The same goes for widgets that bring their own draw.
+ *
+ * Only widgets whose drawWidget() draws by itself are wrapped. DOM widgets
+ * and legacy custom widgets (LegacyWidget) implement drawWidget() by calling
+ * draw(), so a draw() that calls drawWidget() would recurse forever. Those
+ * are recognised by having a draw() of their own (DOM widgets define it on
+ * their class), an element, or isDOMWidget. The wrapper re-checks on every
+ * call and guards against re-entry, so a widget that turns out to delegate
+ * after all falls back to its class's draw() instead of recursing.
  */
 function wrapCanvasDraw(widget) {
     if (widget.__vfxDraw || typeof widget.drawWidget !== "function") return;
-    if (widget.element || widget.isDOMWidget || typeof widget.draw === "function") return;
+    if (delegatesDraw(widget)) return;
     widget.__vfxDraw = true;
     widget.draw = function (ctx, node, width, y, height, lowQuality) {
+        if (this.__vfxDrawing || this.element || this.isDOMWidget) {
+            Object.getPrototypeOf(this)?.draw?.call(this, ctx, node, width, y, height, lowQuality);
+            return;
+        }
         const state = this.__vfxState;
         ctx.save();
-        if (state === "inherited") ctx.globalAlpha *= 0.5;
-        this.drawWidget(ctx, { width, showText: !lowQuality });
-        ctx.restore();
+        this.__vfxDrawing = true;
+        try {
+            if (state === "inherited") ctx.globalAlpha *= 0.5;
+            this.drawWidget(ctx, { width, showText: !lowQuality });
+        } finally {
+            this.__vfxDrawing = false;
+            ctx.restore();
+        }
         if (state === "overridden") {
             ctx.save();
             ctx.strokeStyle = ACCENT;
@@ -230,6 +247,9 @@ function wrapCanvasDraw(widget) {
         return original ? original.call(this, pointer, node, canvas) : false;
     };
 }
+
+const delegatesDraw = (widget) =>
+    !!widget.element || !!widget.isDOMWidget || "draw" in widget;
 
 // Where the glyph sits on a canvas row, in node-local x (measured on a 2x zoom
 // screenshot against frontend 1.52.7). The glyph is drawn at x = 31..35 on
@@ -258,7 +278,7 @@ export function toggle(node, field) {
 
 export function inheritAll(node) {
     writeOverrides(node, new Set());
-    node.__vfxMirrored?.clear();
+    forget(node);
     syncOverrides(node);
     node.setDirtyCanvas?.(true, true);
 }
@@ -271,9 +291,17 @@ export function inheritAll(node) {
 const ROW = ".lg-node-widget";
 const LABEL = '[data-testid="widget-layout-field-label"]';
 
-function widgetForLabel(node, cell) {
+/**
+ * The widget a Vue label cell shows. With `fieldRowsOnly` (clicks), only a
+ * field's own row can match, never a revealed sub-widget that happens to share
+ * its label. Styling also accepts sub-widgets, preferring field rows.
+ */
+function widgetForLabel(node, cell, fieldRowsOnly = true) {
     const text = cell?.textContent?.trim();
-    return node.widgets?.find((w) => (w.label ?? w.name) === text) ?? null;
+    const shows = (w) => (w.label ?? w.name) === text;
+    const row = node.widgets?.find((w) => shows(w) && isFieldRow(w, fieldOf(w)));
+    if (row || fieldRowsOnly) return row ?? null;
+    return node.widgets?.find(shows) ?? null;
 }
 
 /** Style the node's Vue rows after their state. The Vue renderer remounts rows, so this runs every tick. */
@@ -283,7 +311,7 @@ export function decorateVue(node) {
     for (const row of element.querySelectorAll(ROW)) {
         const cell = row.querySelector(LABEL);
         if (!cell) continue;
-        const widget = widgetForLabel(node, cell);
+        const widget = widgetForLabel(node, cell, false);
         const state = widget?.__vfxState;
         const value = cell.nextElementSibling;
         if (value?.style) value.style.opacity = state === "inherited" ? "0.45" : "";
@@ -416,7 +444,7 @@ export function syncOverrides(node) {
     if (!linked) {
         if (node.__vfxLinked) {
             for (const widget of node.widgets ?? []) undecorate(widget);
-            node.__vfxMirrored?.clear();
+            forget(node);
             node.__vfxLinked = false;
             decorateVue(node);   // __vfxState is null now: rows lose their styling
             node.setDirtyCanvas?.(true, true);
