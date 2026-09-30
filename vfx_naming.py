@@ -230,6 +230,82 @@ def _token_values(spec, supplied):
     )
 
 
+def _check_pipe(pipe):
+    """Refuse anything that is not a naming pipe of this version."""
+    required = {"version", "schema", "tokens", "options", "result"}
+    if (not isinstance(pipe, dict) or pipe.get("version") != PIPE_VERSION
+            or not required <= set(pipe)):
+        raise NamingError(
+            "naming_pipe: this is not a VFX naming pipe - connect the output "
+            "of a VFX Naming Convention node.")
+    return pipe
+
+
+def _parse_overrides(text):
+    """Read the `overrides` widget: a JSON list of field names."""
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    try:
+        names = json.loads(raw)
+    except ValueError:
+        names = None
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise NamingError(
+            f"overrides: expected a JSON list of field names, got {raw!r}.")
+    return list(dict.fromkeys(names))
+
+
+def _inherit(pipe, own_tokens, own_options, overridden):
+    """Take everything from an incoming pipe except the fields this node overrides.
+
+    Args:
+        pipe: The incoming naming pipe.
+        own_tokens: This node's raw token input.
+        own_options: This node's option values.
+        overridden: Field names this node overrides.
+
+    Returns:
+        The new pipe, rendered from the merged inputs.
+
+    Raises:
+        NamingError: For a foreign pipe, or - in strict mode - an override the
+            pipe's schema does not allow.
+    """
+    pipe = _check_pipe(pipe)
+    key = pipe["schema"]
+    config = load_schema(key)
+    tokens = dict(pipe["tokens"])
+    options = dict(pipe["options"])
+
+    refused = []
+    for name in overridden:
+        if name in OPTION_NAMES:
+            flags = config.option_flags(name)
+            if flags["visible"] and flags["overridable"]:
+                options[name] = own_options[name]
+                continue
+            refused.append(f"'{name}' is locked by schema '{key}'")
+        elif name in config.tokens:
+            if config.tokens[name].overridable:
+                tokens[name] = own_tokens.get(name)
+                continue
+            refused.append(f"'{name}' is locked by schema '{key}'")
+        else:
+            refused.append(f"schema '{key}' has no field '{name}'")
+
+    notes = []
+    if refused:
+        message = ("Cannot override: " + "; ".join(refused)
+                   + " - the inherited value is used.")
+        if config.effective_options(options)["strict"]:
+            raise NamingError(message)
+        notes.append(message)
+
+    applied = [n for n in overridden if not any(f"'{n}'" in r for r in refused)]
+    return build(key, tokens, options, notes=notes, overridden=applied)
+
+
 def build(key, tokens, options, notes=None, overridden=None):
     """Render one name and wrap it, with the inputs it came from, as a pipe.
 
@@ -317,7 +393,10 @@ def build(key, tokens, options, notes=None, overridden=None):
     return {
         "version": PIPE_VERSION,
         "schema": key,
-        "tokens": {name: tokens.get(name) for name in config.tokens},
+        # Only keep what was actually supplied - not every token name with a
+        # None filler - so a token absent here still falls back to its
+        # initial value on the next build(), the same as a fresh node.
+        "tokens": {name: tokens[name] for name in config.tokens if name in tokens},
         "options": options,
         "result": result,
     }
@@ -341,6 +420,14 @@ class VFXNamingConvention(io.ComfyNode):
                 "Outputs a naming pipe: unpack it with VFX Naming Breakout."
             ),
             inputs=[
+                PIPE.Input(
+                    "naming_pipe", optional=True,
+                    tooltip=(
+                        "Inherit everything from another VFX Naming Convention "
+                        "node. The schema is taken from it; any other field "
+                        "can be overridden with the toggle on its row."
+                    ),
+                ),
                 io.DynamicCombo.Input(
                     "schema",
                     display_name="Schema",
@@ -400,6 +487,14 @@ class VFXNamingConvention(io.ComfyNode):
                         "execution; edits to it have no effect."
                     ),
                 ),
+                io.String.Input(
+                    "overrides", default="", optional=True, socketless=True,
+                    tooltip=(
+                        "Fields this node overrides on its naming_pipe, as a "
+                        "JSON list. Managed by web/vfx_overrides.js and hidden "
+                        "on the node."
+                    ),
+                ),
             ],
             outputs=[PIPE.Output("naming_pipe", tooltip="Everything this node "
                 "decided. Connect to a VFX Naming Breakout for filename_prefix "
@@ -408,8 +503,9 @@ class VFXNamingConvention(io.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, schema, folders=True, strict=True, parent_path="",
-                template_override="", custom_tokens="", preview=""):
+    def execute(cls, schema, folders=True, strict=True, naming_pipe=None,
+                parent_path="", template_override="", custom_tokens="",
+                preview="", overrides=""):
         # The DynamicCombo hands over {"schema": key, <token>: value, ...}.
         supplied = schema if isinstance(schema, dict) else {"schema": str(schema)}
         tokens = {k: v for k, v in supplied.items() if k != "schema"}
@@ -417,7 +513,10 @@ class VFXNamingConvention(io.ComfyNode):
                    "parent_path": parent_path,
                    "template_override": template_override,
                    "custom_tokens": custom_tokens}
-        return io.NodeOutput(build(supplied.get("schema"), tokens, options))
+        if naming_pipe is None:
+            return io.NodeOutput(build(supplied.get("schema"), tokens, options))
+        return io.NodeOutput(
+            _inherit(naming_pipe, tokens, options, _parse_overrides(overrides)))
 
     @staticmethod
     def _report(key, config, values, extras, template_override, shot_id,

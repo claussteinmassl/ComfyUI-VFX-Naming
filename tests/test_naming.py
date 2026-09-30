@@ -485,7 +485,8 @@ class TestRegistration(unittest.TestCase):
                          ["schema", "folders", "strict"])
         self.assertEqual(
             list(info["input"]["optional"]),
-            ["parent_path", "template_override", "custom_tokens", "preview"])
+            ["naming_pipe", "parent_path", "template_override", "custom_tokens",
+             "preview", "overrides"])
 
     def test_a_schema_option_carries_only_its_own_tokens(self):
         info = node_pkg.vfx_naming.VFXNamingConvention.GET_NODE_INFO_V1()
