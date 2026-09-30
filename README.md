@@ -166,11 +166,20 @@ A 44 frame shot therefore runs 1001–1064:
 > **Editorial** should be aware of the handles when reconforming VFX shots in
 > the timeline. An eyeballing check is advised.
 
-## Node
+## Nodes
+
+Two nodes work together: **VFX Naming Convention** builds a naming pipe, and
+**VFX Naming Breakout** unpacks it into `filename_prefix` and the other
+values. A single node still covers the simple case — connect its
+`naming_pipe` straight into a breakout — while a shot with several passes can
+chain further Naming Convention nodes off the first one; see **Inheriting and
+overriding (naming pipe)** below.
+
+### VFX Naming Convention
 
 **VFX Naming Convention (Filename Prefix)** — category `VFX/naming`.
 
-### Inputs
+#### Inputs
 
 **The schema decides which fields this node shows.** Picking a schema swaps the
 token fields for the ones that schema declares — there is no fixed list of
@@ -178,13 +187,20 @@ widgets, and none of the token names below are known to the Python code.
 
 | Input | Purpose |
 |---|---|
-| `schema` | which JSON schema in `schemas/` to render — and therefore which fields appear below it |
+| `naming_pipe` | optional — inherit schema, tokens and options from an upstream VFX Naming Convention node instead of configuring this node from scratch; see **Inheriting and overriding (naming pipe)** below |
+| `schema` | which JSON schema in `schemas/` to render — and therefore which fields appear below it. Ignored while `naming_pipe` is connected: the schema always comes from upstream |
 | `folders` | on = render the schema's folder levels, off = files straight into the output folder |
 | `strict` | on = abort on any violation; off = auto-correct and warn |
 | `parent_path` | optional sub-path, e.g. `SHW/SEQ` or `%date:yyyy-MM-dd%` |
 | `template_override` | override the schema's templates for this node only |
 | `custom_tokens` | extra `name=value` tokens for the template; a name matching a token above overrides it |
 | `preview` | read-only: the assembled result, refreshed as you type |
+
+There is also an `overrides` input: a hidden, socketless widget holding a JSON
+list of the field names this node overrides on its `naming_pipe` (e.g.
+`["task", "ext"]`). It has no widget of its own in either renderer — the
+override UI described below manages it — and it is saved with the workflow
+like any other value.
 
 With `vfx_default` selected, the token fields are:
 
@@ -204,7 +220,24 @@ Pick `studio` instead and `seq`, `vendor` and `task_layer` are gone, while a
 `colorspace` dropdown appears. A field shared by both schemas keeps its value
 across the switch.
 
-### Outputs
+#### Output
+
+The only output is `naming_pipe`: schema, tokens, options and the rendered
+result, bundled for a downstream **VFX Naming Breakout** node or another
+**VFX Naming Convention** node that inherits from it.
+
+### VFX Naming Breakout
+
+**VFX Naming Breakout** — category `VFX/naming`. Unpacks a `naming_pipe` into
+the ten values a single naming node used to output directly.
+
+#### Inputs
+
+| Input | Purpose |
+|---|---|
+| `naming_pipe` | from a VFX Naming Convention node |
+
+#### Outputs
 
 | Output | Example |
 |---|---|
@@ -219,9 +252,92 @@ across the switch.
 | `first_frame` | `1001` (INT — feed frame-range inputs) |
 | `report` | full breakdown plus any validation warnings |
 
-Wire `filename_prefix` into the saver's `filename_prefix` widget (convert it to
-an input first: right-click the Save node → *Convert widget to input*, or drag
-from this node's output onto the widget in recent frontends).
+Wire the breakout's `filename_prefix` into the saver's `filename_prefix`
+widget (convert it to an input first: right-click the Save node → *Convert
+widget to input*, or drag from the breakout's output onto the widget in
+recent frontends).
+
+## Inheriting and overriding (naming pipe)
+
+One main node holds a shot's settings. Further nodes take its `naming_pipe`
+output and change only the fields that differ, so show, sequence, shot and
+version stay in sync automatically instead of being retyped — and drifting
+apart — across a plate, a roto pass and a comp:
+
+```
+[VFX Naming Convention]   main: show, seq, shot, version, ...
+        │ naming_pipe
+        ▼
+[VFX Naming Convention]   child: task = roto, everything else inherited
+        │ naming_pipe
+        ▼
+[VFX Naming Breakout]  →  filename_prefix, directory, shot_id, ...
+```
+
+### The schema is locked
+
+**The schema always comes from upstream and is locked on a node that receives
+a pipe.** The child's own `schema` widget is set to match it, the widget set
+is rebuilt to that schema's fields, and the schema row itself is drawn
+locked — the same as a field the schema marks `overridable: false`.
+Overriding the schema itself is not supported.
+
+### Row states
+
+Only while `naming_pipe` is connected, every field row is in one of three
+states, shown as a glyph at the start of the row's label:
+
+| Glyph | State | Meaning |
+|---|---|---|
+| `○ name` | inherited | value comes from the upstream node and follows it live; the row is drawn dimmed |
+| `● name` | overridden | this node's own value is used instead of the upstream one; the row gets an orange outline/label |
+| `⛓ name` | locked | `overridable: false` in the schema, or the `schema` row itself — always inherited, no toggle |
+
+Without a pipe connected, rows carry no glyph and behave exactly as before.
+
+### Toggling a field
+
+- **Click the glyph** at the start of the row to flip it between inherited
+  and overridden.
+- **Edit an inherited value** — typing into the field overrides it
+  automatically, with no need to click the glyph first.
+- **Right-click the node** → **VFX overrides** submenu: one entry per
+  overridable field ("Override: task" / "Inherit: task"), plus **Inherit
+  all** to clear every override on the node at once.
+
+Switching a field back to inherited re-mirrors the upstream value
+immediately.
+
+### Collapsing inherited rows
+
+A switch at the bottom of the node reads "▾ *N* inherited fields · hide" /
+"▸ show *N* inherited fields". Toggling it hides, or shows again, every
+inherited and locked row — useful once a node overrides only one or two
+fields out of a large schema. It is present only while a pipe is connected.
+
+### Chains
+
+A node's `naming_pipe` can itself come from another node that is a child of a
+further node — main → child → grandchild, and so on. Each link only needs to
+override what differs from its immediate parent; anything not overridden
+anywhere in the chain still tracks the main node live.
+
+### Refused overrides
+
+An override is refused when the named field does not exist on the pipe's
+schema, is `overridable: false`, or is invisible (`visible: false`):
+
+- **Strict** (the pipe's effective `strict` option): the node fails with an
+  error naming the field.
+- **Permissive**: the inherited value is used instead and a note is added to
+  the `report` output — the run still completes.
+
+### Renderers
+
+Both the classic canvas renderer and the Vue nodes renderer are supported.
+In the Vue nodes renderer the extra row styling (the dimmed/outlined look
+beyond the glyph) is best effort; the glyph labels, auto-override on edit and
+the "VFX overrides" context menu always work in both renderers.
 
 ## Schemas — the convention is configuration
 
@@ -329,11 +445,39 @@ order it appears in the file:
 | `layer_pattern` | presets matching this regex reveal a layer number that is appended: `bg` + `2` → `bg02` |
 | `layer_pad` | digits for that layer number (default `2`) |
 | `os` | per-platform starting value, keyed `windows` / `macos` / `linux`; the entry for the running machine beats `default` |
+| `visible` | default `true`; `false` gives the token no field at all — it always renders its starting value (`os`, then `default`, then the first preset) and any supplied value is ignored. A hidden token is implicitly not overridable |
+| `overridable` | default `true`; `false` means a node that receives a naming pipe always takes this token from the pipe — its row shows the inherited value, disabled, with no toggle. Without a pipe it has no effect |
 
 **A preset is taken verbatim.** It was written by the schema author, so
 `charset`, `case`, `length` and `pattern` do not touch it — which is how a
 lowercase token can still offer an uppercase preset like `FINAL`. Text typed
 into a `(custom)` field takes the normal route and is cleaned and checked.
+
+**Hiding or locking the node's own inputs** — `folders`, `strict`,
+`parent_path`, `template_override` and `custom_tokens` are the same five
+inputs on every schema, but a schema can hide or lock them with a top-level
+`options` block:
+
+```json
+"options": {
+  "template_override": {"visible": false},
+  "strict":            {"visible": false, "value": true},
+  "folders":           {"overridable": false}
+}
+```
+
+- `visible: false` hides that input's widget while this schema is selected.
+  The backend ignores any value supplied for it and uses `value`, or the
+  input's normal default when `value` is absent.
+- `overridable: false` behaves as for a token: a node that receives a naming
+  pipe always inherits this input and cannot switch it to overridden.
+
+`load_schema` raises an error at load time when a schema's `options` block:
+
+- names a key that is not one of the five inputs above,
+- gives a token the same name as one of them, because an override list could
+  not tell the two apart,
+- sets `visible` or `overridable` to anything other than `true` or `false`.
 
 > **After changing a schema's token list, delete and re-add the node.** ComfyUI
 > stores widget values by position, so a node already on the canvas keeps the
@@ -543,6 +687,18 @@ fields through the V3 node API's `io.DynamicCombo`, which arrived in 0.4.0; the
 nested option expansion this node relies on landed in 0.8.0. Developed and
 tested against 0.34.0.
 
+## Upgrading to 3.0
+
+3.0 moves the ten outputs off **VFX Naming Convention** onto the new **VFX
+Naming Breakout** node; the naming node's only output is now `naming_pipe`.
+This is a breaking change: **a saved workflow with links from the old
+`filename_prefix`, `folder_name`, `directory`, `full_path`, `basename`,
+`shot_id`, `extension`, `example_filename`, `first_frame` or `report`
+outputs loses those links** and needs a VFX Naming Breakout node inserted
+between the naming node and whatever consumed them. Widget values are
+unaffected — the widget order has not changed, so no node needs to be
+deleted and re-added for this upgrade on its own.
+
 ## Upgrading to 2.0
 
 2.0 moved the token fields out of Python and into the schema files. This is a
@@ -570,7 +726,10 @@ COMFYUI_PATH=/path/to/ComfyUI python3 -m unittest discover -s tests
 `COMFYUI_PATH` is only needed for the node tests; the engine tests run without
 it. `tests/golden_v1.json` holds the output of the pre-2.0 node across the four
 schemas that predate it, and the suite asserts that the rewrite still produces
-it byte for byte.
+it byte for byte. `tests/test_flags.py` covers the `visible`/`overridable`
+schema flags and `tests/test_pipe.py` covers the naming pipe, inheritance,
+overrides and the breakout node — both run as part of the same
+`unittest discover`.
 
 ## Credits
 
