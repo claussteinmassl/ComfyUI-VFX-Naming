@@ -12,6 +12,7 @@ docs/
 
 # Subagent-driven development scratch
 .superpowers/
+.claude/
 
 # Local planning notes
 tasks/
