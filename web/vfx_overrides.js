@@ -1,7 +1,7 @@
 import { app } from "../../scripts/app.js";
 import {
     NODE_CLASS, OVERRIDES_WIDGET, SCHEMA_WIDGET, OPTION_NAMES,
-    classOf, fieldOf, findWidget, schemaFlags,
+    applyVisibility, classOf, fieldOf, findWidget, relayout, schemaFlags,
 } from "./vfx_widgets.js";
 
 // Per-field overrides for a naming node that receives a naming pipe.
@@ -320,6 +320,88 @@ export function menuItems(node) {
     return [null, { content: "VFX overrides", has_submenu: true, submenu: { options } }];
 }
 
+// --- Collapse switch ---------------------------------------------------------
+//
+// "Hide inherited": while on, inherited and locked rows (the Schema row too)
+// are hidden with the same mechanism the schema flags use, so only the
+// overridden rows, the preview and the switch remain. The switch exists only
+// while a pipe is linked; its state is saved in node.properties.
+
+const COLLAPSE_WIDGET = "vfx_collapse";
+
+const hidesInherited = (node) => !!node.properties?.vfxHideInherited;
+
+/** Rows the switch hides: inherited and locked fields, plus the Schema row. */
+function inheritedCount(node) {
+    const overrides = readOverrides(node);
+    const flags = schemaFlags(node);
+    // Options the schema hides are already gone; they are not "inherited rows".
+    const shown = (field) => flags.options?.[field]?.visible !== false;
+    return fieldsOf(node)
+        .filter((field) => shown(field) && stateOf(node, field, overrides) !== "overridden")
+        .length + 1;
+}
+
+const collapseText = (node) => {
+    const count = inheritedCount(node);
+    return hidesInherited(node)
+        ? `▸ show ${count} inherited fields`
+        : `▾ hide ${count} inherited fields`;
+};
+
+function toggleCollapse(node) {
+    node.properties ??= {};
+    node.properties.vfxHideInherited = !hidesInherited(node);
+    applyVisibility(node, syncOverrides(node));   // now, not on the next tick
+    node.setDirtyCanvas?.(true, true);
+}
+
+// A plain-object widget: the Vue renderer draws unknown widget types through
+// its legacy canvas component (WidgetLegacy), so this one implementation
+// serves both renderers. It is never serialized: not into widgets_values,
+// not into the prompt.
+function collapseWidget() {
+    return {
+        type: COLLAPSE_WIDGET,
+        name: COLLAPSE_WIDGET,
+        value: "",
+        serialize: false,
+        options: { serialize: false },
+        computeSize: (width) => [width, 22],
+        draw(ctx, node, width, y, height) {
+            ctx.save();
+            ctx.fillStyle = "#9a9a9a";
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(collapseText(node), width / 2, y + height / 2);
+            ctx.restore();
+        },
+        onPointerDown(pointer, node) {
+            pointer.onClick = () => toggleCollapse(node);
+            return true;
+        },
+    };
+}
+
+function ensureCollapse(node, linked) {
+    const existing = findWidget(node, COLLAPSE_WIDGET);
+    if (linked && !existing) {
+        node.addCustomWidget(collapseWidget());
+        relayout(node);   // the Vue renderer only sees a replaced widget list
+    } else if (!linked && existing) {
+        node.widgets.splice(node.widgets.indexOf(existing), 1);
+        relayout(node);
+    } else if (existing) {
+        // WidgetLegacy redraws its own canvas only when asked to.
+        const text = collapseText(node);
+        if (existing.__vfxText !== text) {
+            existing.__vfxText = text;
+            existing.triggerDraw?.();
+        }
+    }
+}
+
 /**
  * One pass over a node: mirror, decorate, and report which rows the collapse
  * switch hides. Returns the `extraHidden` predicate for applyVisibility().
@@ -339,6 +421,9 @@ export function syncOverrides(node) {
             decorateVue(node);   // __vfxState is null now: rows lose their styling
             node.setDirtyCanvas?.(true, true);
         }
+        // Outside the guard, so the switch never outlives the link, whatever
+        // state the node was created or loaded in.
+        ensureCollapse(node, false);
         return () => false;
     }
     node.__vfxLinked = true;
@@ -352,5 +437,7 @@ export function syncOverrides(node) {
         if (field) decorate(widget, stateOf(node, field, overrides), isFieldRow(widget, field));
     }
     decorateVue(node);
-    return () => false;   // Task 9 returns the collapse predicate here
+    ensureCollapse(node, true);
+    return (widget, field) => hidesInherited(node)
+        && (widget.name === SCHEMA_WIDGET || (field && widget.__vfxState !== "overridden"));
 }
