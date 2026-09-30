@@ -1,4 +1,7 @@
 import { app } from "../../scripts/app.js";
+import {
+    NODE_CLASS, PREVIEW_WIDGET, applyVisibility, loadSchemaFlags,
+} from "./vfx_widgets.js";
 
 // Grid stepping for the VFX Naming Convention node's numeric tokens.
 //
@@ -37,7 +40,6 @@ import { app } from "../../scripts/app.js";
 // If this script fails to load, the widgets fall back to increments of 1 and
 // remain fully usable.
 
-const NODE_CLASS = "VFXNamingConvention";
 const OPTION = "vfxGridStep";
 const ARM_TIMEOUT_MS = 800;
 
@@ -176,8 +178,9 @@ document.addEventListener("keydown", (event) => {
 // So instead of subscribing, this snapshots the values on a slow timer and only
 // calls the backend when the snapshot actually differs - a string compare per
 // node, several times a second, against a request that only fires on real edits.
+// The same tick re-applies the schema's visibility flags for the same reason:
+// the DynamicCombo rebuilds widgets without an event.
 
-const PREVIEW_WIDGET = "preview";
 const PREVIEW_ROUTE = "/vfx_naming/preview";
 const POLL_MS = 250;
 const DEBOUNCE_MS = 120;
@@ -200,7 +203,7 @@ function show(node, text) {
     const widget = node.widgets?.find((w) => w.name === PREVIEW_WIDGET);
     if (!widget || widget.value === text) return;
     widget.value = text;
-    if (widget.inputEl) widget.inputEl.value = text;
+    if (widget.element) widget.element.value = text;
     node.setDirtyCanvas?.(true, false);
 }
 
@@ -230,6 +233,7 @@ function watch(node) {
     let inFlight = null;
 
     const tick = () => {
+        applyVisibility(node);
         const current = snapshot(node);
         if (current === last) return;
         last = current;
@@ -254,15 +258,19 @@ function watch(node) {
 app.registerExtension({
     name: "vfx.naming",
 
+    async setup() {
+        await loadSchemaFlags();
+    },
+
     nodeCreated(node) {
         const cls = node.comfyClass ?? node.constructor?.comfyClass;
         if (cls !== NODE_CLASS || node.__vfxPreviewWatched) return;
         node.__vfxPreviewWatched = true;
 
         const widget = node.widgets?.find((w) => w.name === PREVIEW_WIDGET);
-        if (widget?.inputEl) {
-            widget.inputEl.readOnly = true;
-            widget.inputEl.style.opacity = "0.85";
+        if (widget?.element) {
+            widget.element.readOnly = true;
+            widget.element.style.opacity = "0.85";
         }
         watch(node);
     },
