@@ -1,7 +1,9 @@
 import { app } from "../../scripts/app.js";
 import {
-    NODE_CLASS, PREVIEW_WIDGET, applyVisibility, classOf, loadSchemaFlags,
+    NODE_CLASS, OVERRIDES_WIDGET, PREVIEW_WIDGET, applyVisibility, classOf,
+    loadSchemaFlags,
 } from "./vfx_widgets.js";
+import { syncOverrides } from "./vfx_overrides.js";
 
 // Grid stepping for the VFX Naming Convention node's numeric tokens.
 //
@@ -179,22 +181,26 @@ document.addEventListener("keydown", (event) => {
 // calls the backend when the snapshot actually differs - a string compare per
 // node, several times a second, against a request that only fires on real edits.
 // The same tick re-applies the schema's visibility flags for the same reason:
-// the DynamicCombo rebuilds widgets without an event.
+// the DynamicCombo rebuilds widgets without an event, and runs the pipe
+// override pass (vfx_overrides.js), which mirrors the upstream node's values
+// before the snapshot is taken. `overrides` is left out of the snapshot: which
+// fields are overridden changes nothing in the rendered name.
 
 const PREVIEW_ROUTE = "/vfx_naming/preview";
 const POLL_MS = 250;
 const DEBOUNCE_MS = 120;
 
+const previewInput = (widget) =>
+    widget.name !== PREVIEW_WIDGET && widget.name !== OVERRIDES_WIDGET;
+
 const snapshot = (node) => JSON.stringify(
-    (node.widgets ?? [])
-        .filter((w) => w.name !== PREVIEW_WIDGET)
-        .map((w) => [w.name, w.value]),
+    (node.widgets ?? []).filter(previewInput).map((w) => [w.name, w.value]),
 );
 
 function collect(node) {
     const widgets = {};
     for (const widget of node.widgets ?? []) {
-        if (widget.name !== PREVIEW_WIDGET) widgets[widget.name] = widget.value;
+        if (previewInput(widget)) widgets[widget.name] = widget.value;
     }
     return widgets;
 }
@@ -233,7 +239,16 @@ function watch(node) {
     let inFlight = null;
 
     const tick = () => {
-        applyVisibility(node);
+        applyVisibility(node, syncOverrides(node));
+        if (node.__vfxUnresolved) {
+            // Linked, but the pipe's source is out of reach: execution still
+            // uses the real pipe, so do not render a name from stale values.
+            last = null;
+            clearTimeout(debounce);
+            inFlight?.abort();
+            show(node, "(from pipe)");
+            return;
+        }
         const current = snapshot(node);
         if (current === last) return;
         last = current;
