@@ -559,6 +559,31 @@ class VFXNamingConvention(io.ComfyNode):
         return "\n".join(lines)
 
 
+class VFXNamingBreakout(io.ComfyNode):
+    """Unpack a naming pipe into filename_prefix and the other results."""
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="VFXNamingBreakout",
+            display_name="VFX Naming Breakout",
+            category="VFX/naming",
+            description=(
+                "Unpack the naming pipe of a VFX Naming Convention node into "
+                "filename_prefix, paths, shot id, extension, first frame and "
+                "the report."
+            ),
+            inputs=[PIPE.Input("naming_pipe", tooltip="From VFX Naming Convention.")],
+            outputs=[kind.Output(name, tooltip=tooltip)
+                     for name, kind, tooltip in RESULTS],
+        )
+
+    @classmethod
+    def execute(cls, naming_pipe):
+        result = _check_pipe(naming_pipe)["result"]
+        return io.NodeOutput(*(result[name] for name in RESULT_NAMES))
+
+
 # --- Schema flags for the frontend -------------------------------------------
 
 SCHEMAS_ROUTE = "/vfx_naming/schemas"

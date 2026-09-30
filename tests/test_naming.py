@@ -471,7 +471,8 @@ class TestRegistration(unittest.TestCase):
         import asyncio
         extension = asyncio.run(node_pkg.comfy_entrypoint())
         nodes = asyncio.run(extension.get_node_list())
-        self.assertEqual(nodes, [node_pkg.vfx_naming.VFXNamingConvention])
+        self.assertEqual(nodes, [node_pkg.vfx_naming.VFXNamingConvention,
+                                 node_pkg.vfx_naming.VFXNamingBreakout])
 
     def test_the_schema_validates(self):
         """This is the check that rejects duplicate or missing input/output ids."""

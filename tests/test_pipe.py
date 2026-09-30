@@ -119,3 +119,28 @@ class TestLockedOverrides(FlaggedSchemaCase):
         child = _child(parent, ["template_override"], schema="flagged",
                        template_override="{task}")
         self.assertEqual(child["result"]["basename"], "SHW_comp_v001")
+
+
+@needs_node
+class TestBreakout(unittest.TestCase):
+
+    def breakout(self):
+        return node_pkg.vfx_naming.VFXNamingBreakout
+
+    def test_it_outputs_the_ten_results(self):
+        info = self.breakout().GET_NODE_INFO_V1()
+        self.assertEqual(list(info["output_name"]),
+                         list(node_pkg.vfx_naming.RESULT_NAMES))
+        self.assertEqual(list(info["output"]),
+                         ["STRING"] * 8 + ["INT", "STRING"])
+        self.breakout().define_schema().validate()
+
+    def test_it_unpacks_the_pipe(self):
+        pipe = _parent()
+        values = self.breakout().execute(naming_pipe=pipe).result
+        self.assertEqual(values, tuple(pipe["result"].values()))
+        self.assertEqual(values[0], "SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001")
+
+    def test_it_refuses_a_foreign_pipe(self):
+        with self.assertRaises(engine.NamingError):
+            self.breakout().execute(naming_pipe={"filename_prefix": "x"})
