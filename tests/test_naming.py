@@ -109,6 +109,10 @@ def setUpModule():
         mock.patch.object(engine, "_user_schema_dir", lambda: None),
         mock.patch.dict(os.environ),
     ]
+    if NODE_AVAILABLE:
+        # Counters must not see the developer's real ComfyUI output folder.
+        _ISOLATION.append(mock.patch.object(
+            node_pkg.vfx_naming, "_output_directory", lambda: None))
     for patcher in _ISOLATION:
         patcher.start()
     os.environ.pop(engine.SCHEMA_DIR_ENV, None)
@@ -276,12 +280,13 @@ class TestSchema(unittest.TestCase):
         config = engine.load_schema("studio")
         self.assertEqual(
             list(config.tokens),
-            ["show", "shot", "task", "variant", "version", "colorspace",
-             "frame", "ext", "mount"],
+            ["show", "type", "shot", "name", "task", "variant", "version",
+             "extra", "gen", "colorspace", "frame", "ext", "mount"],
         )
 
     def test_shot_id_is_a_template(self):
-        self.assertEqual(engine.load_schema("studio").shot_id, "{shot}")
+        self.assertEqual(engine.load_schema("studio").shot_id,
+                         "[{shot}][{name}]")
         self.assertEqual(
             engine.load_schema("vfx_default").shot_id, "{show}_{seq}_{shot}")
 
@@ -338,9 +343,14 @@ def _call(schema_key, case):
     config = engine.load_schema(schema_key)
     supplied = {"schema": schema_key}
     for name, spec in config.tokens.items():
+        if name in config.revealed_by or spec.is_counter:
+            continue
         if spec.options:
             chosen = settings.get(name, spec.initial())
             entry = {name: chosen}
+            for child in spec.reveals.get(str(chosen), []):
+                if child in settings:
+                    entry[child] = settings[child]
             if f"{name}_custom" in settings:
                 entry[f"{name}_custom"] = settings[f"{name}_custom"]
             if f"{name}_layer" in settings:
@@ -403,22 +413,40 @@ class TestStudioWip(unittest.TestCase):
         result = self.build(colorspace="acescg")
         self.assertEqual(
             result["filename_prefix"],
-            "Atlas/02_wip/shots/sh010/imggen_main/out/"
-            "sh010_imggen_main_v001_acescg_1001",
+            "Atlas/wip/shots/sh010/imggen/out/"
+            "sh010_imggen_main_v001_g001_acescg/"
+            "sh010_imggen_main_v001_g001_acescg",
         )
         self.assertEqual(
             result["example_filename"],
-            "sh010_imggen_main_v001_acescg_1001.1001.exr",
+            "sh010_imggen_main_v001_g001_acescg.1001.exr",
         )
+
+    def test_an_asset_replaces_the_shot(self):
+        result = self.build(type="assets", name="heroCar", extra="cleanup")
+        self.assertEqual(
+            result["filename_prefix"],
+            "Atlas/wip/assets/heroCar/imggen/out/"
+            "heroCar_imggen_main_v001_cleanup-g001_rec709/"
+            "heroCar_imggen_main_v001_cleanup-g001_rec709",
+        )
+        self.assertEqual(result["shot_id"], "heroCar")
+
+    def test_an_asset_needs_a_name(self):
+        with self.assertRaises(engine.NamingError):
+            self.build(type="assets", name="", strict=True)
+
+    def test_the_hidden_side_of_the_type_is_ignored(self):
+        """A shot number typed before switching to assets must not leak in."""
+        result = self.build(type="assets", name="heroCar", shot=20)
+        self.assertNotIn("sh020", result["filename_prefix"])
 
     def test_the_variant_separates_passes_of_one_task(self):
         """Two AOVs must not land on the same name or in the same folder."""
         depth = self.build(task="aov", variant="depth")
         normal = self.build(task="aov", variant="normal")
         self.assertEqual(
-            depth["filename_prefix"],
-            "Atlas/02_wip/shots/sh010/aov_depth/out/"
-            "sh010_aov_depth_v001_rec709_1001")
+            depth["basename"], "sh010_aov_depth_v001_g001_rec709")
         self.assertNotEqual(depth["folder_name"], normal["folder_name"])
         self.assertNotEqual(depth["basename"], normal["basename"])
 
@@ -433,9 +461,8 @@ class TestStudioWip(unittest.TestCase):
         result = self.build(task="(custom)", task_custom="face-fix",
                             variant="hair-fine")
         self.assertEqual(
-            result["filename_prefix"],
-            "Atlas/02_wip/shots/sh010/face-fix_hair-fine/out/"
-            "sh010_face-fix_hair-fine_v001_rec709_1001")
+            result["basename"], "sh010_face-fix_hair-fine_v001_g001_rec709")
+        self.assertIn("/face-fix/out/", result["filename_prefix"])
 
     def test_underscores_are_still_stripped_from_tokens(self):
         """An underscore inside a token would forge a component boundary."""
@@ -478,7 +505,7 @@ class TestStudioWip(unittest.TestCase):
     def test_show_code_keeps_its_case_and_spaces(self):
         self.assertTrue(
             self.build(show="Atlas Rising")["filename_prefix"]
-            .startswith("Atlas Rising/02_wip/"))
+            .startswith("Atlas Rising/wip/"))
 
     def test_no_sequence_or_vendor_field_exists(self):
         config = engine.load_schema("studio")
@@ -521,8 +548,8 @@ class TestRegistration(unittest.TestCase):
         by_key = {o["key"]: list(o["inputs"]["required"]) for o in options}
         self.assertEqual(
             by_key["studio"],
-            ["show", "shot", "task", "variant", "version", "colorspace",
-             "frame", "ext", "mount"])
+            ["show", "type", "task", "variant", "version", "extra",
+             "colorspace", "frame", "ext", "mount"])
         self.assertEqual(
             by_key["vfx_default"],
             ["show", "seq", "shot", "task", "vendor", "version", "frame", "ext"])
@@ -531,7 +558,9 @@ class TestRegistration(unittest.TestCase):
         info = node_pkg.vfx_naming.VFXNamingConvention.GET_NODE_INFO_V1()
         options = info["input"]["required"]["schema"][1]["options"]
         wip = next(o for o in options if o["key"] == "studio")
-        self.assertEqual(wip["inputs"]["required"]["shot"][1]["vfxGridStep"], 10)
+        shots = next(o for o in wip["inputs"]["required"]["type"][1]["options"]
+                     if o["key"] == "shots")
+        self.assertEqual(shots["inputs"]["required"]["shot"][1]["vfxGridStep"], 10)
 
 
 @needs_node
@@ -664,7 +693,8 @@ class TestAbsolutePaths(unittest.TestCase):
     def test_directory_is_the_mount_plus_the_folders(self):
         self.assertEqual(
             self.build()["directory"],
-            "/Volumes/projects/Atlas/02_wip/shots/sh010/imggen_main/out")
+            "/Volumes/projects/Atlas/wip/shots/sh010/imggen/out/"
+            "sh010_imggen_main_v001_g001_rec709")
 
     def test_full_path_appends_the_basename(self):
         result = self.build()
@@ -675,17 +705,19 @@ class TestAbsolutePaths(unittest.TestCase):
         """ComfyUI's own savers reject anything outside the output folder."""
         prefix = self.build()["filename_prefix"]
         self.assertFalse(prefix.startswith("/"))
-        self.assertTrue(prefix.startswith("Atlas/02_wip/"))
+        self.assertTrue(prefix.startswith("Atlas/wip/"))
 
     def test_a_windows_mount_keeps_its_drive_letter(self):
         self.assertEqual(
             self.build(mount="C:/projects")["directory"],
-            "C:/projects/Atlas/02_wip/shots/sh010/imggen_main/out")
+            "C:/projects/Atlas/wip/shots/sh010/imggen/out/"
+            "sh010_imggen_main_v001_g001_rec709")
 
     def test_a_trailing_slash_does_not_double_up(self):
         self.assertEqual(
             self.build(mount="/Volumes/projects/")["directory"],
-            "/Volumes/projects/Atlas/02_wip/shots/sh010/imggen_main/out")
+            "/Volumes/projects/Atlas/wip/shots/sh010/imggen/out/"
+            "sh010_imggen_main_v001_g001_rec709")
 
     def test_an_empty_mount_leaves_the_absolute_outputs_empty(self):
         result = self.build(mount="")
@@ -731,7 +763,8 @@ class TestPreview(unittest.TestCase):
 
     def widgets(self, **overrides):
         flat = {
-            "schema": "studio", "schema.show": "Atlas", "schema.shot": 10,
+            "schema": "studio", "schema.show": "Atlas",
+            "schema.type": "shots", "schema.type.shot": 10,
             "schema.task": "imggen", "schema.variant": "main",
             "schema.version": 1,
             "schema.colorspace": "acescg", "schema.frame": 1001,
@@ -744,8 +777,8 @@ class TestPreview(unittest.TestCase):
     def test_it_renders_the_assembled_name(self):
         result = node_pkg.vfx_naming.preview(self.widgets())
         self.assertTrue(result["ok"], result.get("error"))
-        self.assertIn("sh010_imggen_main_v001_acescg_1001", result["text"])
-        self.assertIn("/Volumes/projects/Atlas/02_wip/", result["text"])
+        self.assertIn("sh010_imggen_main_v001_g001_acescg", result["text"])
+        self.assertIn("/Volumes/projects/Atlas/wip/", result["text"])
 
     def test_it_stays_permissive_so_half_typed_values_still_show(self):
         """Strict mode would abort on 'sh'; a preview must keep rendering."""
@@ -788,6 +821,129 @@ class TestPreview(unittest.TestCase):
                      {"schema": "nope", "schema.show": "x"}):
             with self.subTest(junk=junk):
                 self.assertIn("ok", node_pkg.vfx_naming.preview(junk))
+
+
+class TestReveals(unittest.TestCase):
+    """A dropdown preset can bring its own tokens along."""
+
+    def schema(self, **type_config):
+        config = {"presets": ["shots", "assets"],
+                  "reveals": {"shots": ["shot"], "assets": ["name"]}}
+        config.update(type_config)
+        return {"tokens": {"type": config, "shot": {"type": "int"},
+                           "name": {}},
+                "file": "{type}_[{shot}][{name}]"}
+
+    def test_the_owner_is_recorded(self):
+        config = engine.Schema("x", self.schema())
+        self.assertEqual(config.revealed_by, {"shot": "type", "name": "type"})
+
+    def test_an_unknown_preset_is_refused(self):
+        with self.assertRaises(engine.NamingError):
+            engine.Schema("x", self.schema(reveals={"props": ["name"]}))
+
+    def test_an_unknown_token_is_refused(self):
+        with self.assertRaises(engine.NamingError):
+            engine.Schema("x", self.schema(reveals={"shots": ["seq"]}))
+
+    def test_a_dropdown_cannot_be_revealed(self):
+        data = self.schema()
+        data["tokens"]["name"] = {"presets": ["a"]}
+        with self.assertRaises(engine.NamingError):
+            engine.Schema("x", data)
+
+    def test_two_owners_are_refused(self):
+        data = self.schema()
+        data["tokens"]["kind"] = {"presets": ["a"], "reveals": {"a": ["shot"]}}
+        with self.assertRaises(engine.NamingError):
+            engine.Schema("x", data)
+
+    def test_reveals_need_presets(self):
+        with self.assertRaises(engine.NamingError):
+            engine.Schema("x", {"tokens": {"a": {"reveals": {"x": ["b"]}},
+                                           "b": {}}, "file": "{a}"})
+
+
+class TestCounterSpec(unittest.TestCase):
+
+    def test_a_counter_has_no_field(self):
+        spec = engine.TokenSpec("gen", {"type": "counter", "visible": True})
+        self.assertFalse(spec.visible)
+        self.assertFalse(spec.overridable)
+        self.assertEqual(spec.initial(), 1)
+
+    def test_it_formats_like_an_int(self):
+        spec = engine.TokenSpec("gen", {"type": "counter", "pad": 3,
+                                        "prefix": "g"})
+        self.assertEqual(spec.resolve(4, True, []), "g004")
+
+    def test_only_one_counter_per_schema(self):
+        with self.assertRaises(engine.NamingError):
+            engine.Schema("x", {"tokens": {"a": {"type": "counter"},
+                                           "b": {"type": "counter"}},
+                                "file": "{a}{b}"})
+
+
+@needs_node
+class TestCounter(unittest.TestCase):
+    """The generation counts up from what is already on disk."""
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.output = os.path.join(self._tmp.name, "output")
+        self.mount = os.path.join(self._tmp.name, "mount")
+        os.makedirs(self.output)
+        patcher = mock.patch.object(
+            node_pkg.vfx_naming, "_output_directory", lambda: self.output)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def build(self, **overrides):
+        settings = dict(show="Atlas", mount=self.mount)
+        settings.update(overrides)
+        return _named("studio", settings)
+
+    def save(self, result, root):
+        """Do what a saver does: create the folder and a numbered file."""
+        folder = os.path.join(root, result["filename_prefix"])
+        os.makedirs(os.path.dirname(folder), exist_ok=True)
+        open(folder + "_00001_.png", "w").close()
+
+    def test_the_first_run_is_generation_one(self):
+        self.assertIn("_g001_", self.build()["basename"])
+
+    def test_a_saved_generation_moves_the_next_one_on(self):
+        self.save(self.build(), self.output)
+        self.assertIn("_g002_", self.build()["basename"])
+
+    def test_the_highest_generation_wins_over_gaps(self):
+        first = self.build()
+        folder = os.path.dirname(os.path.join(self.output, first["filename_prefix"]))
+        os.makedirs(os.path.join(os.path.dirname(folder),
+                                 first["basename"].replace("g001", "g007")))
+        self.assertIn("_g008_", self.build()["basename"])
+
+    def test_files_on_the_mount_count_too(self):
+        result = self.build()
+        os.makedirs(result["directory"])
+        self.assertIn("_g002_", self.build()["basename"])
+
+    def test_each_name_counts_on_its_own(self):
+        self.save(self.build(), self.output)
+        self.assertIn("_g001_", self.build(variant="alt")["basename"])
+        self.assertIn("_cleanup-g001_", self.build(extra="cleanup")["basename"])
+
+    def test_custom_tokens_can_pin_the_generation(self):
+        result = self.build(custom_tokens="gen=12")
+        self.assertIn("_g012_", result["basename"])
+
+    def test_a_counted_schema_always_runs_again(self):
+        Node = node_pkg.vfx_naming.VFXNamingConvention
+        fingerprint = Node.fingerprint_inputs(schema={"schema": "studio"})
+        self.assertNotEqual(fingerprint, fingerprint)  # NaN
+        self.assertFalse(Node.fingerprint_inputs(schema={"schema": "vfx_default"}))
 
 
 if __name__ == "__main__":

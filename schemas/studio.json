@@ -1,11 +1,28 @@
 {
-  "label": "Studio (show/02_wip/shots)",
-  "description": "show/02_wip/shots/shSHOT/task_variant/out/shSHOT_task_variant_vVERSION_colorspace_frame. Tasks cover AI generation work only. 'variant' refines the task and is never empty - 'main' for ordinary work, the pass name under 'aov' - so every name splits into the same components. The show code is kept verbatim, everything else is lower case. The mount point defaults per operating system and feeds the absolute path outputs.",
+  "label": "Studio (show/wip/shots|assets)",
+  "description": "show/wip/TYPE/SHOT|NAME/task/out/NAME/NAME.frame.ext, where NAME is SHOT|NAME_task_variant_vVERSION_[extra-]gGEN_colorspace. 'type' picks shots or assets and reveals the shot number or the asset name. 'extra' is optional free text; the generation is counted from what is already on disk, so every run gets its own folder. Tasks cover AI generation work only. The mount point defaults per operating system and feeds the absolute path outputs.",
   "tokens": {
     "show": {
       "label": "Show code",
       "charset": "any",
       "default": "SHOW"
+    },
+    "type": {
+      "label": "Type",
+      "default": "shots",
+      "presets": [
+        "shots",
+        "assets"
+      ],
+      "allow_custom": false,
+      "reveals": {
+        "shots": [
+          "shot"
+        ],
+        "assets": [
+          "name"
+        ]
+      }
     },
     "shot": {
       "label": "Shot number",
@@ -14,6 +31,12 @@
       "prefix": "sh",
       "default": 10,
       "step": 10
+    },
+    "name": {
+      "label": "Asset name",
+      "charset": "alnum",
+      "allow": "-",
+      "default": "asset"
     },
     "task": {
       "label": "Task",
@@ -49,6 +72,21 @@
       "pad": 3,
       "prefix": "v",
       "default": 1
+    },
+    "extra": {
+      "label": "Extra",
+      "charset": "alnum",
+      "case": "lower",
+      "allow": "-",
+      "optional": true,
+      "default": ""
+    },
+    "gen": {
+      "label": "Generation",
+      "type": "counter",
+      "pad": 3,
+      "prefix": "g",
+      "start": 1
     },
     "colorspace": {
       "label": "Colorspace",
@@ -104,13 +142,14 @@
   ],
   "folders": [
     "{show}",
-    "02_wip",
-    "shots",
-    "{shot}",
-    "{task}_{variant}",
-    "out"
+    "wip",
+    "{type}",
+    "[{shot}][{name}]",
+    "{task}",
+    "out",
+    "[{shot}][{name}]_{task}_{variant}_{version}_[{extra}-]{gen}_{colorspace}"
   ],
-  "file": "{shot}_{task}_{variant}_{version}_{colorspace}_{frame}",
+  "file": "[{shot}][{name}]_{task}_{variant}_{version}_[{extra}-]{gen}_{colorspace}",
   "filename": "{basename}.{frame}.{ext}",
-  "shot_id": "{shot}"
+  "shot_id": "[{shot}][{name}]"
 }

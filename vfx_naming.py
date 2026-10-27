@@ -22,6 +22,7 @@ Reference: "VFX Naming Convention" paper by Victor Perez, VFX Supervisor.
 """
 
 import json
+import os
 import re
 
 from comfy_api.latest import io
@@ -104,7 +105,7 @@ def _fail(message, strict, warnings):
 
 # --- Turning a schema into node inputs ---------------------------------------
 
-def _preset_input(spec):
+def _preset_input(spec, config):
     """A dropdown of the token's presets, plus the fields each one reveals."""
     layered = set(spec.layered_presets())
     initial = str(spec.initial())
@@ -117,7 +118,9 @@ def _preset_input(spec):
 
     options = []
     for preset in presets:
-        revealed = []
+        revealed = [_token_input(config.tokens[name], config)
+                    for name in spec.reveals.get(preset, [])
+                    if config.tokens[name].visible]
         if preset in layered:
             revealed.append(io.Int.Input(
                 f"{spec.name}_layer", display_name="layer",
@@ -144,10 +147,10 @@ def _preset_input(spec):
     )
 
 
-def _token_input(spec):
+def _token_input(spec, config):
     """The node input one token contributes."""
     if spec.options:
-        return _preset_input(spec)
+        return _preset_input(spec, config)
 
     if spec.is_int:
         step = int(spec.step or 1)
@@ -198,7 +201,9 @@ def _token_tooltip(spec):
 def _schema_option(key):
     """One entry of the schema dropdown: its label and its visible token fields."""
     config = load_schema(key)
-    inputs = [_token_input(spec) for spec in config.tokens.values() if spec.visible]
+    # A revealed token sits under the dropdown that reveals it instead.
+    inputs = [_token_input(spec, config) for name, spec in config.tokens.items()
+              if spec.visible and name not in config.revealed_by]
     return io.DynamicCombo.Option(key, inputs)
 
 
@@ -228,6 +233,126 @@ def _token_values(spec, supplied):
         supplied.get(f"{spec.name}_custom"),
         supplied.get(f"{spec.name}_layer", 0),
     )
+
+
+def _revealed_input(config, name, spec, tokens):
+    """The raw input of a token that another token's dropdown reveals.
+
+    Args:
+        config: The schema.
+        name: The revealed token.
+        spec: Its TokenSpec.
+        tokens: The node's raw token input.
+
+    Returns:
+        `(revealed, raw)`: whether the dropdown's current pick reveals the
+        token, and the token's raw input when it does.
+    """
+    owner = config.tokens[config.revealed_by[name]]
+    supplied = (tokens.get(owner.name, owner.initial()) if owner.visible
+                else owner.initial())
+    selected, _, _ = _token_values(owner, supplied)
+    if name not in owner.reveals.get(str(selected), []):
+        return False, None
+    if spec.visible and isinstance(supplied, dict):
+        return True, supplied.get(name, spec.initial())
+    return True, spec.initial()
+
+
+# A counter's placeholder while build() looks for the names already on disk.
+COUNT_MARK = "\x00"
+
+
+def _output_directory():
+    """ComfyUI's output folder, or None outside ComfyUI (engine-only tests)."""
+    try:
+        import folder_paths
+        return folder_paths.get_output_directory()
+    except (ImportError, AttributeError):
+        return None
+
+
+def _highest_count(path):
+    """The highest counter already on disk for a path holding `COUNT_MARK`.
+
+    Args:
+        path: An absolute path whose components hold the mark once, e.g.
+            `/out/sh010_v001_g<mark>_rec709/sh010_v001_g<mark>_rec709`.
+
+    Returns:
+        The highest number found in place of the mark at the first component
+        that holds it, 0 when there is none. A file matches when its name
+        starts with the component, so ComfyUI's own `_00001_.png` suffix is
+        fine.
+    """
+    segments = path.replace("\\", "/").split("/")
+    index = next((i for i, s in enumerate(segments) if COUNT_MARK in s), None)
+    if index is None:
+        return 0
+    base = "/".join(segments[:index]) or "/"
+    try:
+        entries = os.listdir(base)
+    except OSError:
+        return 0
+    before, _, after = segments[index].partition(COUNT_MARK)
+    pattern = re.compile(
+        re.escape(before) + r"(\d+)" + re.escape(after) + r"(?=$|[._])")
+    highest = 0
+    for entry in entries:
+        match = pattern.match(entry)
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return highest
+
+
+def _render_paths(config, values, options, strict, warnings):
+    """Render every path a name produces.
+
+    Returns:
+        A dict with filename_prefix, folder_name, basename, directory,
+        full_path and the unknown template tokens.
+    """
+    prefix_body, basename, unknown = config.render_prefix(
+        values,
+        include_folders=options["folders"],
+        override=options["template_override"],
+        strict=strict,
+    )
+    parent = _sanitize_path(options["parent_path"], strict, warnings)
+    filename_prefix = "/".join(s for s in (parent, prefix_body) if s)
+    folder_name = "/".join(prefix_body.split("/")[:-1])
+
+    # The absolute location, for savers that take a real path. `parent_path`
+    # is a sub-path of ComfyUI's output folder, so it plays no part here.
+    root = config.render_root(values)
+    directory = "/".join(s for s in (root, folder_name) if s) if root else ""
+    full_path = "/".join(s for s in (directory, basename) if s) if directory else ""
+    return {
+        "filename_prefix": filename_prefix, "folder_name": folder_name,
+        "basename": basename, "directory": directory, "full_path": full_path,
+        "unknown": unknown,
+    }
+
+
+def _count(config, values, options, strict, warnings):
+    """Number the schema's counter one past the highest one already saved.
+
+    Both places a name can be saved to are searched: ComfyUI's output folder
+    (filename_prefix) and the absolute full_path.
+    """
+    spec = config.tokens[config.counter]
+    probe = dict(values)
+    probe[config.counter] = spec.prefix + COUNT_MARK
+    paths = _render_paths(config, probe, options, strict=False, warnings=[])
+
+    locations = []
+    output = _output_directory()
+    if output and paths["filename_prefix"]:
+        locations.append(os.path.join(output, paths["filename_prefix"]))
+    if paths["full_path"]:
+        locations.append(paths["full_path"])
+    highest = max([_highest_count(p) for p in locations] + [0])
+    return spec.resolve(max(spec.start, highest + 1), strict, warnings)
 
 
 def _check_pipe(pipe):
@@ -346,9 +471,19 @@ def build(key, tokens, options, notes=None, overridden=None):
 
     values = {}
     for name, spec in config.tokens.items():
-        # A hidden token has no widget; whatever arrives is ignored. A token
-        # that is simply absent starts from its initial value, as a new node.
-        raw = tokens.get(name, spec.initial()) if spec.visible else spec.initial()
+        if spec.is_counter:
+            values[name] = ""   # numbered below, once the name is known
+            continue
+        if name in config.revealed_by:
+            revealed, raw = _revealed_input(config, name, spec, tokens)
+            if not revealed:
+                values[name] = ""
+                continue
+        else:
+            # A hidden token has no widget; whatever arrives is ignored. A
+            # token that is simply absent starts from its initial value, as a
+            # new node.
+            raw = tokens.get(name, spec.initial()) if spec.visible else spec.initial()
         value, custom, layer = _token_values(spec, raw)
         values[name] = spec.resolve(
             value, strict, warnings, custom=custom, layer=layer,
@@ -361,14 +496,14 @@ def build(key, tokens, options, notes=None, overridden=None):
         values[name] = spec.resolve(value, strict, warnings) if spec else value
 
     config.apply_rules(values, warnings)
+    if config.counter and config.counter not in extras:
+        values[config.counter] = _count(config, values, options, strict, warnings)
 
     template_override = options["template_override"]
-    prefix_body, basename, unknown = config.render_prefix(
-        values,
-        include_folders=options["folders"],
-        override=template_override,
-        strict=strict,
-    )
+    paths = _render_paths(config, values, options, strict, warnings)
+    filename_prefix, folder_name, basename, directory, full_path, unknown = (
+        paths[k] for k in ("filename_prefix", "folder_name", "basename",
+                           "directory", "full_path", "unknown"))
     if unknown and not strict:
         warnings.append(
             "Template refers to unknown token(s): "
@@ -376,16 +511,7 @@ def build(key, tokens, options, notes=None, overridden=None):
             + " - rendered as empty."
         )
 
-    parent = _sanitize_path(options["parent_path"], strict, warnings)
-    filename_prefix = "/".join(s for s in (parent, prefix_body) if s)
-    folder_name = "/".join(prefix_body.split("/")[:-1])
     shot_id = config.render_shot_id(values)
-
-    # The absolute location, for savers that take a real path. `parent_path`
-    # is a sub-path of ComfyUI's output folder, so it plays no part here.
-    root = config.render_root(values)
-    directory = "/".join(s for s in (root, folder_name) if s) if root else ""
-    full_path = "/".join(s for s in (directory, basename) if s) if directory else ""
     example_filename, _ = render(
         config.filename, dict(values, basename=basename), strict=False,
     )
@@ -518,6 +644,17 @@ class VFXNamingConvention(io.ComfyNode):
         )
 
     @classmethod
+    def fingerprint_inputs(cls, schema=None, **kwargs):
+        # A counter depends on what is on disk, not on the inputs, so a schema
+        # with one runs every time. Every other schema caches as usual.
+        key = schema.get("schema") if isinstance(schema, dict) else schema
+        try:
+            counted = load_schema(str(key)).counter is not None
+        except NamingError:
+            counted = False
+        return float("nan") if counted else False
+
+    @classmethod
     def execute(cls, schema, folders=True, strict=True, naming_pipe=None,
                 parent_path="", template_override="", custom_tokens="",
                 preview="", overrides=""):
@@ -624,8 +761,10 @@ def schema_meta():
             options[name] = {"visible": flags["visible"],
                              "overridable": flags["overridable"]}
         meta[key] = {
+            # A revealed token is part of its dropdown's field.
             "tokens": {name: {"overridable": spec.overridable}
-                       for name, spec in config.tokens.items() if spec.visible},
+                       for name, spec in config.tokens.items()
+                       if spec.visible and name not in config.revealed_by},
             "options": options,
         }
     return meta

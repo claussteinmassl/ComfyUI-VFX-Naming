@@ -202,7 +202,8 @@ list of the field names this node overrides on its `naming_pipe` (e.g.
 override UI described below manages it — and it is saved with the workflow
 like any other value.
 
-With `vfx_default` selected, the token fields are:
+A new node starts on `studio` (see [Schemas](#schemas--the-convention-is-configuration)).
+With `vfx_default` selected instead, the token fields are:
 
 | Field | Purpose |
 |---|---|
@@ -216,8 +217,9 @@ With `vfx_default` selected, the token fields are:
 | `frame` | work-range head; convention is `1001` (10 head + 10 tail handles) |
 | `ext` | dropdown of extensions, plus `(custom)` |
 
-Pick `studio` instead and `seq`, `vendor` and `task_layer` are gone, while a
-`colorspace` dropdown appears. A field shared by both schemas keeps its value
+With `studio`, `seq`, `vendor` and `task_layer` are gone. A `type` dropdown
+(`shots` / `assets`) shows either `shot` or `name` beneath it, and `extra` and a
+`colorspace` dropdown appear. A field shared by both schemas keeps its value
 across the switch.
 
 #### Output
@@ -243,7 +245,7 @@ the ten values a single naming node used to output directly.
 |---|---|
 | `filename_prefix` | `SHW_SEQ_0010_comp_vnd_v001/SHW_SEQ_0010_comp_vnd_v001` |
 | `folder_name` | `SHW_SEQ_0010_comp_vnd_v001` |
-| `directory` | `/Volumes/projects/Atlas/02_wip/shots/sh010/aov_depth/out` — absolute, empty unless the schema declares a `root` |
+| `directory` | `/Volumes/projects/Atlas/wip/shots/sh010/aov/out/sh010_aov_depth_v001_g001_acescg` — absolute, empty unless the schema declares a `root` |
 | `full_path` | `directory` + `basename`, without frame or extension |
 | `basename` | `SHW_SEQ_0010_comp_vnd_v001` |
 | `shot_id` | `SHW_SEQ_0010` — from the schema's `shot_id` template, empty when it declares none |
@@ -391,7 +393,9 @@ live in JSON (the presets in [`schemas/`](schemas), your own elsewhere, see
 that loads and renders them; `vfx_naming.py` contains no token name and no token
 vocabulary at all.
 
-Pick one with the `schema` widget. Five ship with the node:
+Pick one with the `schema` widget. A new node starts on `studio`, the default
+(`DEFAULT_SCHEMA` in `naming_schema.py`); saved workflows keep the schema they
+were saved with. Five ship with the node:
 
 | Schema | Renders |
 |---|---|
@@ -399,14 +403,28 @@ Pick one with the `schema` widget. Five ship with the node:
 | `vfx_flat` | `SHW_SEQ_0010_comp_vnd_v001` (no sequence folder) |
 | `studio_nested` | `SHW/SEQ/0010/comp-vnd/v001-0010-comp-vnd` |
 | `episodic_dotted` | `SHW/ep101/SEQ.0010/SHW.SEQ.0010.comp.vp.v001` |
-| `studio` | `Atlas/02_wip/shots/sh010/imggen_main/out/sh010_imggen_main_v001_acescg_1001` |
+| `studio` | `Atlas/wip/shots/sh010/imggen/out/sh010_imggen_main_v001_g001_acescg/sh010_imggen_main_v001_g001_acescg` |
 
 `studio` is a worked example of how far a schema can depart from the
-default: the show code is kept verbatim rather than uppercased, shots read
-`sh010` instead of `0010`, there is no sequence and no vendor, and a
-`colorspace` token exists that no other schema has — with `rec709` and `acescg`
-as its only accepted values. It is also the one that declares a `root`, so it
-fills the absolute path outputs; see **Absolute paths and the mount point**.
+default. As tokens:
+
+```
+<mount>/<show>/wip/<type>/<shot>|<name>/<task>/out/<NAME>/<NAME>.<frame>.<ext>
+
+<NAME> = <shot>|<name>_<task>_<variant>_<version>_[<extra>-]<gen>_<colorspace>
+```
+
+- the show code is kept verbatim rather than uppercased;
+- `type` is `shots` or `assets`. `shots` reveals the shot number (`sh010`),
+  `assets` reveals the asset name (`heroCar`); exactly one of them is in every
+  name, and it is never empty;
+- there is no sequence and no vendor;
+- `extra` is optional free text, and `gen` is a **generation counter** with no
+  field: every run gets the next free number, so every run lands in its own
+  folder (see [Generation counter](#generation-counter));
+- `colorspace` accepts only `rec709` and `acescg`;
+- it declares a `root`, so it fills the absolute path outputs; see **Absolute
+  paths and the mount point**.
 
 Its task list covers **AI generation work only**, since that is what ComfyUI
 produces — the paper's `comp`/`layt`/`anim` vocabulary and the lab plates stay
@@ -420,10 +438,10 @@ Alongside `task` it carries a **`variant`** token that refines it, and which is
 never empty — `main` for ordinary work, the pass name under `aov`:
 
 ```
-shots/sh010/imggen_main/out/sh010_imggen_main_v001_acescg_1001.1001.exr
-shots/sh010/aov_depth/out/sh010_aov_depth_v001_acescg_1001.1001.exr
-shots/sh010/aov_normal/out/sh010_aov_normal_v001_acescg_1001.1001.exr
-shots/sh010/roto_hair/out/sh010_roto_hair_v001_acescg_1001.1001.exr
+shots/sh010/imggen/out/sh010_imggen_main_v001_g001_acescg/…
+shots/sh010/aov/out/sh010_aov_depth_v001_g001_acescg/…
+shots/sh010/aov/out/sh010_aov_normal_v001_g001_acescg/…
+assets/heroCar/roto/out/heroCar_roto_hair_v001_cleanup-g003_acescg/…
 ```
 
 `main` in every ordinary name is deliberate: a component that is sometimes
@@ -517,6 +535,7 @@ order it appears in the file:
 | `step` | spinner increment for an `int` token |
 | `layer_pattern` | presets matching this regex reveal a layer number that is appended: `bg` + `2` → `bg02` |
 | `layer_pad` | digits for that layer number (default `2`) |
+| `reveals` | per preset, the tokens that exist only while that preset is picked: `{"shots": ["shot"], "assets": ["name"]}`. They appear under the dropdown; a token that is not revealed renders as nothing. Only plain text and number tokens can be revealed, each by one dropdown. On a child node they belong to the dropdown's override row |
 | `os` | per-platform starting value, keyed `windows` / `macos` / `linux`; the entry for the running machine beats `default` |
 | `visible` | default `true`; `false` gives the token no field at all — it always renders its starting value (`os`, then `default`, then the first preset) and any supplied value is ignored. A hidden token is implicitly not overridable |
 | `overridable` | default `true`; `false` means a node that receives a naming pipe always takes this token from the pipe — its row shows the inherited value, disabled, with no toggle. Without a pipe it has no effect |
@@ -619,9 +638,9 @@ real path, though, so a schema can also declare **where it sits on disk**:
 feed two outputs and nothing else:
 
 ```
-filename_prefix : Atlas/02_wip/shots/sh010/aov_depth/out/sh010_aov_depth_v001_acescg_1001
-directory       : /Volumes/projects/Atlas/02_wip/shots/sh010/aov_depth/out
-full_path       : /Volumes/projects/Atlas/.../out/sh010_aov_depth_v001_acescg_1001
+filename_prefix : Atlas/wip/shots/sh010/aov/out/sh010_aov_depth_v001_g001_acescg/sh010_aov_depth_v001_g001_acescg
+directory       : /Volumes/projects/Atlas/wip/shots/sh010/aov/out/sh010_aov_depth_v001_g001_acescg
+full_path       : /Volumes/projects/Atlas/.../out/sh010_aov_depth_v001_g001_acescg/sh010_aov_depth_v001_g001_acescg
 ```
 
 So one node feeds both kinds of saver: `filename_prefix` for ComfyUI's own,
@@ -649,10 +668,10 @@ path.
 The node shows the assembled result while you type — no run needed:
 
 ```
-prefix    : Atlas/02_wip/shots/sh010/aov_depth/out/sh010_aov_depth_v003_acescg_1001
-example   : sh010_aov_depth_v003_acescg_1001.1001.exr
-directory : /Volumes/projects/Atlas/02_wip/shots/sh010/aov_depth/out
-full path : /Volumes/projects/Atlas/.../out/sh010_aov_depth_v003_acescg_1001
+prefix    : Atlas/wip/shots/sh010/aov/out/sh010_aov_depth_v001_g001_acescg/sh010_aov_depth_v001_g001_acescg
+example   : sh010_aov_depth_v001_g001_acescg.1001.exr
+directory : /Volumes/projects/Atlas/wip/shots/sh010/aov/out/sh010_aov_depth_v001_g001_acescg
+full path : /Volumes/projects/Atlas/.../out/sh010_aov_depth_v001_g001_acescg/sh010_aov_depth_v001_g001_acescg
 
 ! Show code must be exactly 3 characters (got 'SH', 2).
 ```
@@ -702,6 +721,28 @@ if not is_within_directory(output_dir, full_output_folder):   # folder_paths.py
 
 That is why `filename_prefix` stays relative no matter what and the absolute
 path is a separate output — see **Absolute paths and the mount point**.
+
+## Generation counter
+
+A token with `"type": "counter"` numbers itself. It has no field; on every run
+the node looks at what is already on disk for the same name and takes one past
+the highest number it finds (`start`, default `1`, when there is none). `pad`
+and `prefix` format it like an `int`, so `studio`'s `gen` reads `g001`,
+`g002`, …
+
+- Both places a name can be saved to are searched: ComfyUI's output folder
+  (`filename_prefix`) and the absolute `full_path`.
+- Each name counts on its own: another task, variant, version, `extra` text or
+  colorspace starts again at `g001`.
+- The number is placed where the template puts it, not at the end. ComfyUI's
+  savers still append their own `_00001_` (see below); with a fresh folder per
+  generation that suffix is always `_00001_`.
+- A schema with a counter re-runs its node on every queue, because the number
+  depends on the disk and not on the inputs. Queueing an unchanged graph
+  therefore saves again, as the next generation.
+- `custom_tokens` can pin it for one node: `gen=12`.
+- The live preview shows the number the next run will get.
+- One counter per schema.
 
 ## Shot number stepping
 

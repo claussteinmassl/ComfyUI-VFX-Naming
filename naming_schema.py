@@ -23,7 +23,10 @@ type: `_`, `.`, `-`, or nothing at all.
 Token configuration
 -------------------
     label          human-readable name, used in messages and the report
-    type           "string" (default) or "int"
+    type           "string" (default), "int" or "counter". A counter has no
+                   field: each run numbers it one past the highest value
+                   already on disk for the same name (see `start`)
+    start          first value of a counter (default 1)
     charset        "alpha", "alnum" or "any" - what a typed value may contain
     allow          extra characters kept on top of `charset`, e.g. "-" so words
                    can be separated. Never list a character the schema uses as
@@ -40,6 +43,11 @@ Token configuration
     step           spinner increment for an int
     layer_pattern  presets matching this regex take a layer number: bg -> bg02
     layer_pad      digits for that layer number (default 2)
+    reveals        per preset, the tokens that only exist while that preset is
+                   picked: {"shots": ["shot"], "assets": ["name"]}. The node
+                   shows them under the dropdown; a token that is not
+                   revealed renders as nothing. Only plain text and number
+                   tokens can be revealed, each by one token
     os             per-platform starting value, keyed windows / macos / linux;
                    the one for the running machine wins over `default`
     visible        false: the node shows no field and always renders the
@@ -81,6 +89,10 @@ import sys
 # The presets that ship with the node. Custom schemas live elsewhere; see
 # `schema_dirs()`.
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "schemas")
+
+# The schema a new node starts on. `vfx_default` stays the embedded fallback
+# for when no schema file can be found at all.
+DEFAULT_SCHEMA = "studio"
 
 # Directories (split with os.pathsep) holding extra schemas, e.g. a studio share.
 SCHEMA_DIR_ENV = "VFX_NAMING_SCHEMA_DIR"
@@ -292,13 +304,23 @@ class TokenSpec:
         self.step = config.get("step")
         self.layer_pattern = config.get("layer_pattern")
         self.layer_pad = int(config.get("layer_pad", 2))
+        self.start = int(config.get("start", 1))
+        # The tokens each preset brings along, e.g. {"shots": ["shot"]}.
+        reveals = config.get("reveals") or {}
+        if not isinstance(reveals, dict):
+            raise NamingError(f"Token '{name}': 'reveals' must map presets to "
+                              f"lists of token names (got {reveals!r}).")
+        self.reveals = {str(preset): [str(n) for n in (names or [])]
+                        for preset, names in reveals.items()}
         # Per-OS starting values, e.g. a mount point that differs per platform.
         self.os_defaults = config.get("os") or {}
 
         # Whether the node shows the token at all, and whether a node that
         # receives a pipe may override it. A hidden token always renders its
         # initial value, so there is nothing to override.
-        self.visible = _flag(config, "visible", f"Token '{name}'")
+        # A counter is never typed in, so it never has a field either.
+        self.visible = (_flag(config, "visible", f"Token '{name}'")
+                        and not self.is_counter)
         overridable_flag = _flag(config, "overridable", f"Token '{name}'")
         self.overridable = self.visible and overridable_flag
 
@@ -318,7 +340,11 @@ class TokenSpec:
 
     @property
     def is_int(self):
-        return self.type == "int"
+        return self.type in ("int", "counter")
+
+    @property
+    def is_counter(self):
+        return self.type == "counter"
 
     @property
     def options(self):
@@ -335,6 +361,8 @@ class TokenSpec:
 
     def initial(self):
         """The node's starting value for this token, on this machine."""
+        if self.is_counter:
+            return self.start
         if self.os_defaults.get(CURRENT_OS) is not None:
             return self.os_defaults[CURRENT_OS]
         if self.default is not None:
@@ -503,10 +531,57 @@ class Schema:
             raise NamingError(
                 f"Schema '{key}': token name(s) {', '.join(clash)} clash with "
                 "the node's own inputs - rename the token.")
+        self.revealed_by = self._read_reveals(key)
+        counters = [n for n, s in self.tokens.items() if s.is_counter]
+        if len(counters) > 1:
+            raise NamingError(
+                f"Schema '{key}': only one counter token is supported "
+                f"(found {', '.join(counters)}).")
+        self.counter = counters[0] if counters else None
         self._options = self._read_options(key, data.get("options") or {})
 
     def spec(self, name):
         return self.tokens.get(name) or TokenSpec(name, {"optional": True})
+
+    def _read_reveals(self, key):
+        """Validate every token's `reveals` map.
+
+        Returns:
+            A dict of revealed token -> the token whose presets reveal it.
+
+        Raises:
+            NamingError: A reveal names an unknown preset or token, a token
+                that cannot sit under a dropdown, or a token that two
+                dropdowns claim.
+        """
+        owners = {}
+        for name, spec in self.tokens.items():
+            if spec.reveals and not spec.presets:
+                raise NamingError(
+                    f"Schema '{key}': token '{name}' has 'reveals' but no "
+                    "presets to reveal them with.")
+            for preset, children in spec.reveals.items():
+                if preset not in spec.presets:
+                    raise NamingError(
+                        f"Schema '{key}': token '{name}' reveals tokens for "
+                        f"'{preset}', which is not one of its presets.")
+                for child in children:
+                    target = self.tokens.get(child)
+                    if target is None:
+                        raise NamingError(
+                            f"Schema '{key}': token '{name}' reveals unknown "
+                            f"token '{child}'.")
+                    if (child == name or target.presets or target.reveals
+                            or target.is_counter):
+                        raise NamingError(
+                            f"Schema '{key}': token '{name}' cannot reveal "
+                            f"'{child}' - only plain text and number tokens "
+                            "can be revealed.")
+                    if owners.setdefault(child, name) != name:
+                        raise NamingError(
+                            f"Schema '{key}': token '{child}' is revealed by "
+                            f"both '{owners[child]}' and '{name}'.")
+        return owners
 
     @staticmethod
     def _read_options(key, block):
@@ -699,11 +774,14 @@ def schema_source(key):
 
 
 def schema_names():
-    """Dropdown order: `vfx_default` first, the rest sorted, no duplicates."""
+    """Dropdown order: `DEFAULT_SCHEMA` first, the rest sorted, no duplicates.
+
+    A new node starts on the first entry, so that is the default schema.
+    """
     names = sorted(available_schemas())
-    if "vfx_default" in names:
-        names.remove("vfx_default")
-        names.insert(0, "vfx_default")
+    if DEFAULT_SCHEMA in names:
+        names.remove(DEFAULT_SCHEMA)
+        names.insert(0, DEFAULT_SCHEMA)
     return names or ["vfx_default"]
 
 

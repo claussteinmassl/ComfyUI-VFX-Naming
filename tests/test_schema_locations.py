@@ -119,12 +119,12 @@ class TestMissingSchema(LocationCase):
 class TestDropdown(LocationCase):
 
     def test_default_first_rest_sorted_without_duplicates(self):
-        for key in ("zeta", "vfx_default", "alpha"):
+        for key in ("zeta", "vfx_default", "studio", "alpha"):
             _write(self.builtin, key, key)
         _write(self.user, "alpha", "override")
         _write(self.env_a, "mid", "mid")
         self.assertEqual(engine.schema_names(),
-                         ["vfx_default", "alpha", "mid", "zeta"])
+                         ["studio", "alpha", "mid", "vfx_default", "zeta"])
 
 
 class TestUserDirectory(unittest.TestCase):
