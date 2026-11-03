@@ -127,6 +127,93 @@ class TestDropdown(LocationCase):
                          ["studio", "alpha", "mid", "vfx_default", "zeta"])
 
 
+class TestBuiltinSwitch(LocationCase):
+    """VFX_NAMING_BUILTIN_SCHEMAS turns the shipped presets off."""
+
+    def setUp(self):
+        super().setUp()
+        _write(self.builtin, "vfx_default", "shipped default")
+        _write(self.builtin, "studio", "shipped studio")
+        _write(self.user, "kundex", "user schema")
+
+    def switch(self, value):
+        self.enterContext(mock.patch.dict(
+            os.environ, {engine.BUILTIN_SCHEMAS_ENV: value}))
+
+    def test_on_by_default(self):
+        self.assertIn("studio", engine.schema_names())
+
+    def test_off_leaves_only_studio_and_user_schemas(self):
+        _write(self.env_a, "share", "studio share")
+        for value in ("0", "false", "No", "OFF"):
+            with self.subTest(value=value):
+                self.switch(value)
+                self.assertEqual(engine.schema_names(), ["kundex", "share"])
+
+    def test_any_other_value_keeps_them(self):
+        self.switch("1")
+        self.assertIn("vfx_default", engine.schema_names())
+
+    def test_a_user_file_with_a_builtin_name_stays(self):
+        _write(self.user, "studio", "user studio")
+        self.switch("0")
+        self.assertEqual(engine.load_schema("studio").label, "user studio")
+
+    def test_loading_a_switched_off_preset_says_why(self):
+        self.switch("0")
+        for key in ("studio", "vfx_default"):
+            with self.subTest(key=key):
+                with self.assertRaises(engine.NamingError) as caught:
+                    engine.load_schema(key)
+                self.assertIn(engine.BUILTIN_SCHEMAS_ENV, str(caught.exception))
+
+    def test_no_schema_left_offers_a_placeholder_that_explains(self):
+        self.switch("0")
+        os.remove(os.path.join(self.user, "kundex.json"))
+        self.assertEqual(engine.schema_names(), [engine.NO_SCHEMA])
+        with self.assertRaises(engine.NamingError) as caught:
+            engine.load_schema(engine.NO_SCHEMA)
+        self.assertIn("No schema found", str(caught.exception))
+
+
+class TestDefaultSchema(LocationCase):
+    """VFX_NAMING_DEFAULT_SCHEMA picks the schema a new node starts on."""
+
+    def setUp(self):
+        super().setUp()
+        for key in ("alpha", "studio", "zeta"):
+            _write(self.builtin, key, key)
+
+    def default(self, value):
+        self.enterContext(mock.patch.dict(
+            os.environ, {engine.DEFAULT_SCHEMA_ENV: value}))
+
+    def test_studio_leads_without_the_variable(self):
+        self.assertEqual(engine.schema_names()[0], "studio")
+
+    def test_the_variable_moves_its_schema_first(self):
+        self.default("zeta")
+        self.assertEqual(engine.schema_names(), ["zeta", "alpha", "studio"])
+
+    def test_an_unknown_default_falls_back_to_sorted(self):
+        self.default("nope")
+        self.assertEqual(engine.schema_names(), ["alpha", "studio", "zeta"])
+
+
+@needs_node
+class TestNoSchemaNode(LocationCase):
+
+    def test_the_node_still_loads_and_running_it_explains(self):
+        self.enterContext(mock.patch.dict(
+            os.environ, {engine.BUILTIN_SCHEMAS_ENV: "0"}))
+        option = node_pkg.vfx_naming._schema_option(engine.NO_SCHEMA)
+        self.assertEqual(option.inputs, [])
+        self.assertNotIn(engine.NO_SCHEMA, node_pkg.vfx_naming.schema_meta())
+        result = node_pkg.vfx_naming.preview({"schema": engine.NO_SCHEMA})
+        self.assertFalse(result["ok"])
+        self.assertIn("No schema found", result["error"])
+
+
 class TestUserDirectory(unittest.TestCase):
 
     def _folder_paths(self, base):

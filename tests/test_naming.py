@@ -115,7 +115,9 @@ def setUpModule():
             node_pkg.vfx_naming, "_output_directory", lambda: None))
     for patcher in _ISOLATION:
         patcher.start()
-    os.environ.pop(engine.SCHEMA_DIR_ENV, None)
+    for name in (engine.SCHEMA_DIR_ENV, engine.BUILTIN_SCHEMAS_ENV,
+                 engine.DEFAULT_SCHEMA_ENV):
+        os.environ.pop(name, None)
 
 
 def tearDownModule():
@@ -809,7 +811,7 @@ class TestPreview(unittest.TestCase):
         self.assertIn("_bg02_", result["text"])
 
     def test_it_reports_instead_of_raising(self):
-        result = node_pkg.vfx_naming.preview({"schema": "studio"})
+        result = node_pkg.vfx_naming.preview({"schema": "nope"})
         self.assertFalse(result["ok"])
         self.assertTrue(result["error"])
 

@@ -29,6 +29,7 @@ from comfy_api.latest import io
 
 from .naming_schema import (
     CUSTOM,
+    NO_SCHEMA,
     NamingError,
     OPTION_NAMES,
     load_schema,
@@ -200,6 +201,9 @@ def _token_tooltip(spec):
 
 def _schema_option(key):
     """One entry of the schema dropdown: its label and its visible token fields."""
+    if key == NO_SCHEMA:
+        # Keeps the node loadable; running it reports where it looked.
+        return io.DynamicCombo.Option(key, [])
     config = load_schema(key)
     # A revealed token sits under the dropdown that reveals it instead.
     inputs = [_token_input(spec, config) for name, spec in config.tokens.items()
@@ -574,10 +578,11 @@ class VFXNamingConvention(io.ComfyNode):
                     display_name="Schema",
                     options=[_schema_option(key) for key in schema_names()],
                     tooltip=(
-                        "Naming schema from the schemas/ folder: token rules, "
-                        "delimiters, token order and folder depth. The fields "
-                        "below are the tokens it declares. Drop your own JSON "
-                        "in there to add a studio convention."
+                        "Naming schema: token rules, delimiters, token order "
+                        "and folder depth. The fields below are the tokens it "
+                        "declares. Add your own JSON to the ComfyUI user "
+                        "folder (vfx_naming/schemas) or a folder named in "
+                        "VFX_NAMING_SCHEMA_DIR."
                     ),
                 ),
                 io.Boolean.Input(
@@ -754,6 +759,8 @@ def schema_meta():
     """
     meta = {}
     for key in schema_names():
+        if key == NO_SCHEMA:
+            continue
         config = load_schema(key)
         options = {}
         for name in OPTION_NAMES:
@@ -815,6 +822,9 @@ def preview(widgets):
     try:
         values = _nest(widgets or {})
         supplied = values.get("schema")
+        # A schema without fields (e.g. NO_SCHEMA) arrives as the bare key.
+        if isinstance(supplied, str) and supplied:
+            supplied = {"schema": supplied}
         if not isinstance(supplied, dict):
             return {"ok": False, "error": "No schema selected yet."}
 

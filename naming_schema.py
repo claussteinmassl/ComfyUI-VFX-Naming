@@ -90,12 +90,23 @@ import sys
 # `schema_dirs()`.
 SCHEMA_DIR = os.path.join(os.path.dirname(__file__), "schemas")
 
-# The schema a new node starts on. `vfx_default` stays the embedded fallback
-# for when no schema file can be found at all.
+# The schema a new node starts on, unless `DEFAULT_SCHEMA_ENV` names another.
+# `vfx_default` stays the embedded fallback for when no schema file can be
+# found at all.
 DEFAULT_SCHEMA = "studio"
 
 # Directories (split with os.pathsep) holding extra schemas, e.g. a studio share.
 SCHEMA_DIR_ENV = "VFX_NAMING_SCHEMA_DIR"
+
+# Set to 0 / false / no / off to drop the presets that ship with the node, so
+# a studio deployment offers only its own schemas.
+BUILTIN_SCHEMAS_ENV = "VFX_NAMING_BUILTIN_SCHEMAS"
+
+# The key of the schema a new node starts on, e.g. a studio's own schema.
+DEFAULT_SCHEMA_ENV = "VFX_NAMING_DEFAULT_SCHEMA"
+
+# The dropdown's only entry when no schema is found anywhere.
+NO_SCHEMA = "(no schema found)"
 
 TOKEN_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)(?::([^}]*))?\}")
 PAD_MOD_RE = re.compile(r"^0?(\d+)$")
@@ -728,15 +739,27 @@ def _user_schema_dir():
     return path
 
 
+def builtin_schemas_enabled():
+    """Whether the presets that ship with the node are offered.
+
+    Returns:
+        False when `VFX_NAMING_BUILTIN_SCHEMAS` is 0, false, no or off (any
+        case), True otherwise.
+    """
+    value = os.environ.get(BUILTIN_SCHEMAS_ENV, "").strip().lower()
+    return value not in ("0", "false", "no", "off")
+
+
 def schema_dirs():
     """Every directory schemas are read from, lowest precedence first.
 
     Returns:
-        A list of `(kind, path)`: the built-in presets ("built-in"), each
-        directory in `VFX_NAMING_SCHEMA_DIR` ("studio") and the ComfyUI user
-        folder ("user"). A key found in a later entry replaces an earlier one.
+        A list of `(kind, path)`: the built-in presets ("built-in", unless
+        `VFX_NAMING_BUILTIN_SCHEMAS` turns them off), each directory in
+        `VFX_NAMING_SCHEMA_DIR` ("studio") and the ComfyUI user folder
+        ("user"). A key found in a later entry replaces an earlier one.
     """
-    dirs = [("built-in", SCHEMA_DIR)]
+    dirs = [("built-in", SCHEMA_DIR)] if builtin_schemas_enabled() else []
     for entry in os.environ.get(SCHEMA_DIR_ENV, "").split(os.pathsep):
         if entry.strip():
             dirs.append(("studio", os.path.expanduser(entry.strip())))
@@ -773,16 +796,35 @@ def schema_source(key):
     return _scan_schemas().get(key)
 
 
+def default_schema():
+    """The key a new node should start on.
+
+    Returns:
+        `VFX_NAMING_DEFAULT_SCHEMA` when set, `DEFAULT_SCHEMA` otherwise. The
+        key may not exist; `schema_names()` then leads with the first one
+        sorted.
+    """
+    return os.environ.get(DEFAULT_SCHEMA_ENV, "").strip() or DEFAULT_SCHEMA
+
+
 def schema_names():
-    """Dropdown order: `DEFAULT_SCHEMA` first, the rest sorted, no duplicates.
+    """Dropdown order: the default schema first, the rest sorted, no duplicates.
 
     A new node starts on the first entry, so that is the default schema.
+
+    Returns:
+        The keys. With no schema file anywhere: `vfx_default` (the embedded
+        fallback) while the built-in presets are on, `NO_SCHEMA` when they
+        are off.
     """
     names = sorted(available_schemas())
-    if DEFAULT_SCHEMA in names:
-        names.remove(DEFAULT_SCHEMA)
-        names.insert(0, DEFAULT_SCHEMA)
-    return names or ["vfx_default"]
+    default = default_schema()
+    if default in names:
+        names.remove(default)
+        names.insert(0, default)
+    if names:
+        return names
+    return ["vfx_default"] if builtin_schemas_enabled() else [NO_SCHEMA]
 
 
 def load_schema(key):
@@ -794,9 +836,21 @@ def load_schema(key):
     """
     source = schema_source(key)
     if not source:
-        if key == "vfx_default":
+        builtin = builtin_schemas_enabled()
+        if key == "vfx_default" and builtin:
             return _builtin_default()
-        searched = ", ".join(path for _, path in schema_dirs())
+        searched = ", ".join(path for _, path in schema_dirs()) or "nothing"
+        if not builtin and (key == "vfx_default" or os.path.isfile(
+                os.path.join(SCHEMA_DIR, f"{key}.json"))):
+            raise NamingError(
+                f"Schema '{key}' ships with the node, but "
+                f"{BUILTIN_SCHEMAS_ENV} turns the built-in schemas off. "
+                f"Searched: {searched}")
+        if key == NO_SCHEMA:
+            raise NamingError(
+                "No schema found. Add one to the ComfyUI user folder "
+                f"(vfx_naming/schemas) or point {SCHEMA_DIR_ENV} at a folder "
+                f"of schemas. Searched: {searched}")
         raise NamingError(
             f"Unknown schema '{key}'. Searched: {searched}")
     try:

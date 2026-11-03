@@ -476,6 +476,32 @@ the node folder. An unknown schema key is an error that lists every folder
 that was searched; only `vfx_default` has an embedded fallback. The report's
 `Source` line shows which of the three a schema came from.
 
+#### Studio deployments
+
+Two more variables shape what the node offers, e.g. in a Docker image:
+
+| Variable | Effect |
+|---|---|
+| `VFX_NAMING_BUILTIN_SCHEMAS` | `0`, `false`, `no` or `off` drops the presets that ship with the node. Schemas from `VFX_NAMING_SCHEMA_DIR` and the user folder stay. Default: on |
+| `VFX_NAMING_DEFAULT_SCHEMA` | key of the schema a new node starts on, e.g. `kundex`. Default: `studio`. An unknown key is ignored and the dropdown starts on the first schema in alphabetical order |
+
+```
+export VFX_NAMING_BUILTIN_SCHEMAS=0
+export VFX_NAMING_SCHEMA_DIR=/mnt/pipeline/naming
+export VFX_NAMING_DEFAULT_SCHEMA=kundex
+```
+
+With the presets off:
+
+- a workflow that still names one fails with an error saying so, instead of
+  rendering a name the studio does not use;
+- the embedded `vfx_default` fallback is off too;
+- when no schema is left at all, the dropdown shows `(no schema found)`, and
+  running the node lists the folders it searched.
+
+A user or studio file with the same name as a preset (say `studio.json`) is
+not a preset, so it stays.
+
 ### Writing your own
 
 Drop a JSON file in the ComfyUI user folder `user/vfx_naming/schemas/` (or a
