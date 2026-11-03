@@ -1,5 +1,6 @@
 {
   "label": "VFX default",
+  "builtin": true,
   "description": "SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.",
   "tokens": {
     "show": {

@@ -482,7 +482,7 @@ Two more variables shape what the node offers, e.g. in a Docker image:
 
 | Variable | Effect |
 |---|---|
-| `VFX_NAMING_BUILTIN_SCHEMAS` | `0`, `false`, `no` or `off` drops the presets that ship with the node. Schemas from `VFX_NAMING_SCHEMA_DIR` and the user folder stay. Default: on |
+| `VFX_NAMING_BUILTIN_SCHEMAS` | `0`, `false`, `no` or `off` drops the presets that ship with the node — the files in `schemas/` marked `"builtin": true`. Everything else stays: unmarked files in `schemas/`, `VFX_NAMING_SCHEMA_DIR` and the user folder. Default: on |
 | `VFX_NAMING_DEFAULT_SCHEMA` | key of the schema a new node starts on, e.g. `kundex`. Default: `studio`. An unknown key is ignored and the dropdown starts on the first schema in alphabetical order |
 
 ```
@@ -501,6 +501,13 @@ With the presets off:
 
 A user or studio file with the same name as a preset (say `studio.json`) is
 not a preset, so it stays.
+
+**Keeping a studio schema in a copy of this repo.** A studio that keeps its
+own fork can commit its schema straight into `schemas/`, next to the presets,
+as long as the file does not carry `"builtin": true`. The switch then hides
+the presets and keeps the studio's schema, and merging updates from upstream
+never conflicts, because upstream only touches its own files. The report's
+`Source` line shows such a file as `node`.
 
 ### Writing your own
 

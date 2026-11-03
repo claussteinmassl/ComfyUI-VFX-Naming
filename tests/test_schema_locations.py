@@ -18,13 +18,19 @@ from unittest import mock
 from test_naming import _named, engine, needs_node, node_pkg
 
 
-def _write(directory, key, label):
-    """Write a minimal valid schema whose label identifies its origin."""
+def _write(directory, key, label, builtin=True):
+    """Write a minimal valid schema whose label identifies its origin.
+
+    `builtin` marks it as a preset; it only matters in the node's folder.
+    """
     os.makedirs(directory, exist_ok=True)
+    data = {"label": label,
+            "tokens": {"show": {"label": "Show", "default": "abc"}},
+            "file": "{show}"}
+    if builtin:
+        data["builtin"] = True
     with open(os.path.join(directory, key + ".json"), "w", encoding="utf-8") as handle:
-        json.dump({"label": label,
-                   "tokens": {"show": {"label": "Show", "default": "abc"}},
-                   "file": "{show}"}, handle)
+        json.dump(data, handle)
 
 
 class LocationCase(unittest.TestCase):
@@ -167,6 +173,23 @@ class TestBuiltinSwitch(LocationCase):
                     engine.load_schema(key)
                 self.assertIn(engine.BUILTIN_SCHEMAS_ENV, str(caught.exception))
 
+    def test_an_unmarked_file_in_the_node_folder_stays(self):
+        """A studio commits its own schema next to the presets."""
+        _write(self.builtin, "atk", "client schema", builtin=False)
+        self.switch("0")
+        self.assertEqual(engine.schema_names(), ["atk", "kundex"])
+        self.assertEqual(engine.schema_source("atk")[0], "node")
+        self.assertEqual(engine.load_schema("atk").label, "client schema")
+
+    def test_the_marker_counts_only_in_the_node_folder(self):
+        """A preset copied to the user folder as a template is not hidden."""
+        _write(self.user, "copied", "copy of a preset", builtin=True)
+        self.switch("0")
+        self.assertIn("copied", engine.schema_names())
+
+    def test_a_marked_file_is_reported_as_built_in(self):
+        self.assertEqual(engine.schema_source("studio")[0], "built-in")
+
     def test_no_schema_left_offers_a_placeholder_that_explains(self):
         self.switch("0")
         os.remove(os.path.join(self.user, "kundex.json"))
@@ -174,6 +197,25 @@ class TestBuiltinSwitch(LocationCase):
         with self.assertRaises(engine.NamingError) as caught:
             engine.load_schema(engine.NO_SCHEMA)
         self.assertIn("No schema found", str(caught.exception))
+
+
+class TestShippedPresets(unittest.TestCase):
+
+    # Listed by name: a studio's own unmarked file in schemas/ must not fail
+    # this test in its copy of the repo.
+    PRESETS = ("episodic_dotted", "studio", "studio_nested", "vfx_default",
+               "vfx_flat")
+
+    def test_every_shipped_preset_is_marked(self):
+        """Unmarked, a preset would survive VFX_NAMING_BUILTIN_SCHEMAS=0."""
+        folder = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "schemas")
+        for key in self.PRESETS:
+            with self.subTest(schema=key):
+                self.assertTrue(engine.is_preset(os.path.join(folder, f"{key}.json")))
+
+    def test_the_embedded_default_is_marked(self):
+        self.assertIs(json.loads(engine.DEFAULT_SCHEMA_JSON)["builtin"], True)
 
 
 class TestDefaultSchema(LocationCase):

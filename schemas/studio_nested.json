@@ -1,5 +1,6 @@
 {
   "label": "Studio nested (show/seq/shot/task)",
+  "builtin": true,
   "description": "Four folder levels, dash delimited, version first in the basename. Demonstrates arbitrary nesting depth, delimiters and token order.",
   "tokens": {
     "show": {

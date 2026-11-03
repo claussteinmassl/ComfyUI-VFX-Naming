@@ -1,5 +1,6 @@
 {
   "label": "Studio (show/wip/shots|assets)",
+  "builtin": true,
   "description": "show/wip/TYPE/SHOT|NAME/task/out/NAME/NAME.frame.ext, where NAME is SHOT|NAME_task_variant_vVERSION_[extra-]gGEN_colorspace. 'type' picks shots or assets and reveals the shot number or the asset name. 'extra' is optional free text; the generation is counted from what is already on disk, so every run gets its own folder. Tasks cover AI generation work only. The mount point defaults per operating system and feeds the absolute path outputs.",
   "tokens": {
     "show": {

@@ -1,5 +1,6 @@
 {
   "label": "Episodic dotted (episode + artist)",
+  "builtin": true,
   "description": "Dot delimited, with an episode folder and the artist in place of the vendor. Demonstrates that the token set is the schema's to choose.",
   "tokens": {
     "show": {

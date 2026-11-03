@@ -1,5 +1,6 @@
 {
   "label": "VFX flat (no sequence folder)",
+  "builtin": true,
   "description": "Same filename, written straight into the output folder.",
   "tokens": {
     "show": {

@@ -73,6 +73,12 @@ Schema templates
                    stays relative, because ComfyUI's own savers reject anything
                    outside the output folder.
 
+Preset marker
+-------------
+    builtin        true on the presets that ship in the node's `schemas/`
+                   folder. VFX_NAMING_BUILTIN_SCHEMAS=0 hides exactly those;
+                   any other file in that folder stays. Ignored elsewhere
+
 Node options
 ------------
     options        per-input flags for folders, strict, parent_path,
@@ -99,7 +105,9 @@ DEFAULT_SCHEMA = "studio"
 SCHEMA_DIR_ENV = "VFX_NAMING_SCHEMA_DIR"
 
 # Set to 0 / false / no / off to drop the presets that ship with the node, so
-# a studio deployment offers only its own schemas.
+# a studio deployment offers only its own schemas. A preset is a file in
+# `SCHEMA_DIR` marked `"builtin": true`; anything else in that folder (a
+# studio's own schema committed next to them) stays.
 BUILTIN_SCHEMAS_ENV = "VFX_NAMING_BUILTIN_SCHEMAS"
 
 # The key of the schema a new node starts on, e.g. a studio's own schema.
@@ -754,12 +762,12 @@ def schema_dirs():
     """Every directory schemas are read from, lowest precedence first.
 
     Returns:
-        A list of `(kind, path)`: the built-in presets ("built-in", unless
-        `VFX_NAMING_BUILTIN_SCHEMAS` turns them off), each directory in
-        `VFX_NAMING_SCHEMA_DIR` ("studio") and the ComfyUI user folder
-        ("user"). A key found in a later entry replaces an earlier one.
+        A list of `(kind, path)`: the node's own `schemas/` folder
+        ("built-in"), each directory in `VFX_NAMING_SCHEMA_DIR` ("studio") and
+        the ComfyUI user folder ("user"). A key found in a later entry
+        replaces an earlier one.
     """
-    dirs = [("built-in", SCHEMA_DIR)] if builtin_schemas_enabled() else []
+    dirs = [("built-in", SCHEMA_DIR)]
     for entry in os.environ.get(SCHEMA_DIR_ENV, "").split(os.pathsep):
         if entry.strip():
             dirs.append(("studio", os.path.expanduser(entry.strip())))
@@ -769,16 +777,47 @@ def schema_dirs():
     return dirs
 
 
+def is_preset(path):
+    """Whether a schema file is marked as a preset that ships with the node.
+
+    Args:
+        path: The JSON file.
+
+    Returns:
+        True when its top level holds `"builtin": true`. An unreadable file
+        is not a preset, so loading it reports the real problem.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("builtin") is True
+
+
 def _scan_schemas():
-    """Map of schema key -> (kind, file path), later sources winning."""
+    """Map of schema key -> (kind, file path), later sources winning.
+
+    In the node's own folder, a file marked `"builtin": true` is a preset
+    ("built-in") and anything else was added there ("node"). With the presets
+    switched off only the latter remain.
+    """
+    builtin = builtin_schemas_enabled()
     found = {}
     for kind, directory in schema_dirs():
         if not os.path.isdir(directory):
             continue
         for entry in sorted(os.listdir(directory)):
-            if entry.lower().endswith(".json"):
-                found[os.path.splitext(entry)[0]] = (
-                    kind, os.path.join(directory, entry))
+            if not entry.lower().endswith(".json"):
+                continue
+            path = os.path.join(directory, entry)
+            if kind == "built-in" and not is_preset(path):
+                kind_here = "node"
+            elif kind == "built-in" and not builtin:
+                continue
+            else:
+                kind_here = kind
+            found[os.path.splitext(entry)[0]] = (kind_here, path)
     return found
 
 
@@ -839,9 +878,9 @@ def load_schema(key):
         builtin = builtin_schemas_enabled()
         if key == "vfx_default" and builtin:
             return _builtin_default()
-        searched = ", ".join(path for _, path in schema_dirs()) or "nothing"
-        if not builtin and (key == "vfx_default" or os.path.isfile(
-                os.path.join(SCHEMA_DIR, f"{key}.json"))):
+        searched = ", ".join(path for _, path in schema_dirs())
+        preset = os.path.join(SCHEMA_DIR, f"{key}.json")
+        if not builtin and (key == "vfx_default" or is_preset(preset)):
             raise NamingError(
                 f"Schema '{key}' ships with the node, but "
                 f"{BUILTIN_SCHEMAS_ENV} turns the built-in schemas off. "
@@ -888,6 +927,7 @@ def parse_custom_tokens(text, strict=False):
 DEFAULT_SCHEMA_JSON = r"""
 {
   "label": "VFX default",
+  "builtin": true,
   "description": "SHOW_SEQ_SHOT_task_ven_v### with the sequence in its own folder.",
   "tokens": {
     "show":    {"label": "Show code", "charset": "alpha", "case": "upper", "length": 3, "default": "SHW"},
