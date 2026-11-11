@@ -40,7 +40,12 @@ Token configuration
     presets        list of values offered as a dropdown in the node
     allow_custom   whether that dropdown also offers free text (default true)
     default        the node's initial value
-    step           spinner increment for an int
+    step           spinner increment for an int: the +/- buttons move to the
+                   next multiple of it
+    step_policy    what a typed value off that grid gets: "allow" (accepted
+                   silently), "warn" (accepted with a note, the default) or
+                   "enforce" (snapped in the node, refused when building -
+                   a warning in permissive mode)
     layer_pattern  presets matching this regex take a layer number: bg -> bg02
     layer_pad      digits for that layer number (default 2)
     reveals        per preset, the tokens that only exist while that preset is
@@ -121,6 +126,9 @@ PAD_MOD_RE = re.compile(r"^0?(\d+)$")
 
 # The dropdown entry that reveals a token's free-text field.
 CUSTOM = "(custom)"
+
+# How an int token treats typed values between the multiples of its `step`.
+STEP_POLICIES = ("allow", "warn", "enforce")
 
 # The node's inputs that are not tokens. A schema's `options` block may hide
 # them or lock them against downstream overrides; a token may not share a name
@@ -321,6 +329,11 @@ class TokenSpec:
         self.allow_custom = bool(config.get("allow_custom", True))
         self.default = config.get("default")
         self.step = config.get("step")
+        self.step_policy = config.get("step_policy", "warn")
+        if self.step_policy not in STEP_POLICIES:
+            raise NamingError(
+                f"Token '{name}': 'step_policy' must be one of "
+                f"{', '.join(STEP_POLICIES)} (got {self.step_policy!r}).")
         self.layer_pattern = config.get("layer_pattern")
         self.layer_pad = int(config.get("layer_pad", 2))
         self.start = int(config.get("start", 1))
@@ -360,6 +373,10 @@ class TokenSpec:
     @property
     def is_int(self):
         return self.type in ("int", "counter")
+
+    def off_grid(self, number):
+        """Whether an int lies between the multiples of the token's `step`."""
+        return bool(self.step and self.step > 1 and number % self.step)
 
     @property
     def is_counter(self):
@@ -431,12 +448,17 @@ class TokenSpec:
             if width and len(text) > width:
                 _fail(f"{self.label} {number} does not fit in {width} digits.",
                       strict, warnings)
-            if self.step and self.step > 1 and number % self.step:
-                warnings.append(
-                    f"Note: {self.label.lower()} {number} is not a multiple of "
-                    f"{self.step}. The schema increments by {self.step}, but "
-                    "off-grid values are accepted."
-                )
+            if self.off_grid(number):
+                if self.step_policy == "enforce":
+                    _fail(f"{self.label} {number} is not a multiple of "
+                          f"{self.step}, and the schema only allows "
+                          "multiples.", strict, warnings)
+                elif self.step_policy == "warn":
+                    warnings.append(
+                        f"Note: {self.label.lower()} {number} is not a "
+                        f"multiple of {self.step}. The schema increments by "
+                        f"{self.step}, but off-grid values are accepted."
+                    )
             return text
 
         # No token is ever legitimately true/false. This shows up when a node on

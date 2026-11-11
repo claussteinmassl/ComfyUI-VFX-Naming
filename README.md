@@ -565,7 +565,8 @@ order it appears in the file:
 | `presets` | list of values → the token renders as a dropdown instead of a text box |
 | `allow_custom` | default `true`; adds a `(custom)` entry that reveals a free-text field. Set `false` and the presets are the only accepted values |
 | `default` | the field's starting value |
-| `step` | spinner increment for an `int` token |
+| `step` | spinner increment for an `int` token; the +/- buttons land on its multiples |
+| `step_policy` | what a typed value between those multiples gets: `allow` (kept, silently), `warn` (kept, with a note in `report` — the default) or `enforce` (snapped onto the grid in the node, refused when the name is built; a warning in permissive mode). See [Shot number stepping](#shot-number-stepping) |
 | `layer_pattern` | presets matching this regex reveal a layer number that is appended: `bg` + `2` → `bg02` |
 | `layer_pad` | digits for that layer number (default `2`) |
 | `reveals` | per preset, the tokens that exist only while that preset is picked: `{"shots": ["shot"], "assets": ["name"]}`. They appear under the dropdown; a token that is not revealed renders as nothing. Only plain text and number tokens can be revealed, each by one dropdown. On a child node they belong to the dropdown's override row |
@@ -780,38 +781,50 @@ and `prefix` format it like an `int`, so `studio`'s `gen` reads `g001`,
 ## Shot number stepping
 
 A schema declares the increment with `"step": 10` on an int token. The +/-
-buttons then move the shot number in tens, matching the convention, but **any**
-number can be typed in manually — `15`, `125`, `7`. Off-grid values are accepted
-even in strict mode; they only add an advisory note to the `report` output. (The
-convention's own example `SHW_SEQ_0125_prev_vnd_v001` is off-grid.)
+buttons then move the shot number in tens, matching the convention. Whether a
+shot can be squeezed in between — `15`, or `11`, `12`, `13` — is the token's
+`step_policy`:
 
-Pressing +/- always lands on the nearest shot number ending in 0, in the
-direction pressed — from 98, `+` goes to 100 and `-` goes to 90, rather than
-dragging the off-grid number along to 108. On-grid values step normally
-(20 -> 30).
+```json
+"shot": { "type": "int", "pad": 3, "prefix": "sh", "default": 10,
+          "step": 10, "step_policy": "warn" }
+```
+
+| `step_policy` | Typed `15` | Build |
+|---|---|---|
+| `allow` | stays `15` | accepted, no note |
+| `warn` (default) | stays `15` | accepted, advisory note in `report` |
+| `enforce` | snaps to `20` | refused with an error; in permissive mode a warning |
+
+(The convention's own example `SHW_SEQ_0125_prev_vnd_v001` is off-grid, which
+is why the presets keep the default `warn`.)
+
+Pressing +/- always lands on the nearest multiple, in the direction pressed —
+from 98, `+` goes to 100 and `-` goes to 90, rather than dragging the off-grid
+number along to 108. On-grid values step normally (20 -> 30).
 
 Both behaviours need the bundled `web/vfx_naming.js`. ComfyUI's INT widget uses
 one option (`step2`) for both the increment and for snapping committed values
 onto that grid, so a plain `"step": 10` would round a typed 15 up to 20. The
-extension supplies the stepping instead, and finds the widgets to apply it to
-through the `vfxGridStep` option the node attaches to any int token whose schema
-declares a step — the token can be named anything, and the `schema` dropdown
-creates and destroys these widgets as you switch.
+extension supplies the stepping instead. It also drops options it does not
+know, so the grid cannot ride on the widget: the extension reads it from the
+schema flags (`grids` in `/vfx_naming/schemas`) and matches each node's number
+widgets against them on the node's poll tick — the token can be named anything,
+and the `schema` dropdown creates and destroys these widgets as you switch.
 
-With `Comfy.VueNodes` enabled the widget renders as a DOM component whose +/-
-buttons do `model = clamp(model +/- step)` and commit by calling
-`widget.callback(value)` directly — never `setValue()` or `onClick()`. The grid
-step is therefore applied on `pointerdown`, by setting `step2` to the exact
-distance to the next grid point in that direction (the option is reactive, and
-a pointerdown precedes the click by a full task, so the component re-renders
-with the new step before it computes the value). The wrapped callback then
-redirects an armed change onto the grid as a safety net — which is also what
-makes the keyboard Up/Down arrows snap, since no re-render happens between
-keydown and the component's handler.
+- **Canvas renderer:** the arrow clicks and the widget's
+  `incrementValue` / `decrementValue` are overridden per widget.
+- **Vue nodes** (`Comfy.VueNodes`): the DOM component's +/- buttons do
+  `model = clamp(model +/- step)` and commit by calling `widget.callback(value)`
+  directly. The grid step is applied on `pointerdown`, by setting `step2` to the
+  exact distance to the next grid point (the option is reactive, and a
+  pointerdown precedes the click by a full task, so the component re-renders
+  with the new step first). The wrapped callback redirects an armed change onto
+  the grid as a safety net — which is also what makes the keyboard Up/Down
+  arrows snap.
 
-The mechanism was verified against a live ComfyUI 1.49.6 — 20 stepping cases,
-free-form typing, and no effect on other INT widgets or other nodes — before it
-was retargeted from a fixed widget name to the `vfxGridStep` option in 2.0.
+Without the extension the widget falls back to ComfyUI's stock behaviour: +/-
+by the step, typed values snapped to it.
 
 ## Install
 

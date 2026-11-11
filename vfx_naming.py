@@ -154,14 +154,12 @@ def _token_input(spec, config):
         return _preset_input(spec, config)
 
     if spec.is_int:
-        step = int(spec.step or 1)
+        # web/vfx_naming.js takes the grid from schema_meta() and decides
+        # there whether typed values snap to it (see `step_policy`).
         return io.Int.Input(
             spec.name, display_name=spec.label,
-            default=int(spec.initial() or 0), min=0, max=MAX_INT, step=step,
-            # web/vfx_naming.js reads this to snap the +/- buttons onto the
-            # schema's grid without also snapping typed values.
-            extra_dict={"vfxGridStep": step} if step > 1 else None,
-            tooltip=_token_tooltip(spec),
+            default=int(spec.initial() or 0), min=0, max=MAX_INT,
+            step=int(spec.step or 1), tooltip=_token_tooltip(spec),
         )
 
     return io.String.Input(
@@ -177,7 +175,9 @@ def _token_tooltip(spec):
         if spec.pad:
             parts.append(f"zero padded to {spec.pad} digits")
         if spec.step and spec.step > 1:
-            parts.append(f"increments of {spec.step}")
+            parts.append(f"multiples of {spec.step} only"
+                         if spec.step_policy == "enforce"
+                         else f"increments of {spec.step}")
     else:
         if spec.charset == "alpha":
             parts.append("letters only")
@@ -755,7 +755,9 @@ def schema_meta():
     Hidden tokens are left out - they have no widget to describe.
 
     Returns:
-        A dict keyed by schema, each with `tokens` and `options` flag maps.
+        A dict keyed by schema, each with `tokens` and `options` flag maps
+        and a `grids` map of the stepped int tokens (revealed ones included),
+        giving each its `step` and `policy`.
     """
     meta = {}
     for key in schema_names():
@@ -773,6 +775,13 @@ def schema_meta():
                        for name, spec in config.tokens.items()
                        if spec.visible and name not in config.revealed_by},
             "options": options,
+            # ComfyUI's INT widget drops unknown options, so the grid travels
+            # here instead of on the widget.
+            "grids": {name: {"step": int(spec.step),
+                             "policy": spec.step_policy}
+                      for name, spec in config.tokens.items()
+                      if spec.visible and spec.is_int and spec.step
+                      and spec.step > 1},
         }
     return meta
 

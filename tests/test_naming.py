@@ -206,6 +206,39 @@ class TestTokenSpec(unittest.TestCase):
         self.assertEqual(spec.resolve(15, True, warnings), "0015")
         self.assertTrue(any("multiple of 10" in w for w in warnings))
 
+    def test_step_policy_defaults_to_warn(self):
+        self.assertEqual(self.spec(type="int", step=10).step_policy, "warn")
+
+    def test_step_policy_allow_passes_silently(self):
+        spec = self.spec(type="int", pad=3, step=10, step_policy="allow")
+        warnings = []
+        self.assertEqual(spec.resolve(15, True, warnings), "015")
+        self.assertEqual(warnings, [])
+
+    def test_step_policy_enforce_refuses_off_grid_values(self):
+        spec = self.spec(type="int", pad=3, step=10, step_policy="enforce")
+        with self.assertRaisesRegex(engine.NamingError, "not a multiple of 10"):
+            spec.resolve(15, True, [])
+        self.assertEqual(spec.resolve(20, True, []), "020")
+
+    def test_step_policy_enforce_only_warns_when_permissive(self):
+        spec = self.spec(type="int", pad=3, step=10, step_policy="enforce")
+        warnings = []
+        self.assertEqual(spec.resolve(15, False, warnings), "015")
+        self.assertTrue(any("only allows multiples" in w for w in warnings))
+
+    def test_step_policy_ignores_on_grid_values(self):
+        for policy in engine.STEP_POLICIES:
+            with self.subTest(policy=policy):
+                spec = self.spec(type="int", step=10, step_policy=policy)
+                warnings = []
+                spec.resolve(30, True, warnings)
+                self.assertEqual(warnings, [])
+
+    def test_unknown_step_policy_is_rejected(self):
+        with self.assertRaisesRegex(engine.NamingError, "step_policy"):
+            self.spec(type="int", step=10, step_policy="strict")
+
     def test_optional_empty_renders_as_nothing(self):
         self.assertEqual(self.spec(optional=True).resolve("", True, []), "")
         with self.assertRaises(engine.NamingError):
@@ -556,13 +589,22 @@ class TestRegistration(unittest.TestCase):
             by_key["vfx_default"],
             ["show", "seq", "shot", "task", "vendor", "version", "frame", "ext"])
 
-    def test_the_shot_widget_carries_the_grid_step_for_the_frontend(self):
+    def test_the_shot_widget_steps_by_the_schema_grid(self):
         info = node_pkg.vfx_naming.VFXNamingConvention.GET_NODE_INFO_V1()
         options = info["input"]["required"]["schema"][1]["options"]
         wip = next(o for o in options if o["key"] == "studio")
         shots = next(o for o in wip["inputs"]["required"]["type"][1]["options"]
                      if o["key"] == "shots")
-        self.assertEqual(shots["inputs"]["required"]["shot"][1]["vfxGridStep"], 10)
+        self.assertEqual(shots["inputs"]["required"]["shot"][1]["step"], 10)
+
+    def test_schema_meta_hands_the_grid_to_the_frontend(self):
+        # ComfyUI's INT widget drops unknown options, so the frontend reads
+        # the grid of revealed and top-level tokens from here.
+        meta = node_pkg.vfx_naming.schema_meta()
+        self.assertEqual(meta["studio"]["grids"],
+                         {"shot": {"step": 10, "policy": "warn"}})
+        self.assertEqual(meta["vfx_default"]["grids"],
+                         {"shot": {"step": 10, "policy": "warn"}})
 
 
 @needs_node

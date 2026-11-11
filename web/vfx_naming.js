@@ -1,48 +1,51 @@
 import { app } from "../../scripts/app.js";
 import {
-    NODE_CLASS, OVERRIDES_WIDGET, PREVIEW_WIDGET, applyVisibility, classOf,
-    loadSchemaFlags,
+    NODE_CLASS, OVERRIDES_WIDGET, PREVIEW_WIDGET, SCHEMA_WIDGET, applyVisibility,
+    classOf, loadSchemaFlags, schemaFlags,
 } from "./vfx_widgets.js";
 import { installRowMenu, menuItems, syncOverrides } from "./vfx_overrides.js";
 
 // Grid stepping for the VFX Naming Convention node's numeric tokens.
 //
 // A schema can declare `"step": 10` on an int token - shot numbers increment by
-// tens. Two behaviours ComfyUI's stock INT widget cannot give at the same time:
+// tens - and a `step_policy` for typed values that fall between the multiples:
+// "allow" and "warn" keep them (a 15 squeezed in between 10 and 20), "enforce"
+// snaps them onto the grid. Python has the final word either way; this only
+// keeps the widget from fighting the policy.
 //
-//   1. Manual entry stays free-form. The widget uses a single option (`step2`)
-//      for both the increment AND for snapping every committed value onto that
-//      grid, so a plain step of 10 would round a typed 15 up to 20. The snap is
-//      therefore neutralised during commit.
+// ComfyUI's stock INT widget cannot do this on its own. It uses one option
+// (`step2`) both as the +/- increment AND to snap every committed value onto
+// that grid in its callback, so a plain step of 10 rounds a typed 15 up to 20.
+// The patch below therefore:
 //
-//   2. The +/- buttons land on the nearest number on the grid, in the direction
+//   1. commits typed values as typed, unless the policy is "enforce" - the snap
+//      is neutralised by dropping `step2` to 1 for the duration of the commit;
+//   2. makes the +/- buttons land on the nearest grid point in the direction
 //      pressed - 98 goes up to 100 and down to 90 - instead of a blind +/-10
 //      that would carry an off-grid number along (98 -> 108).
 //
-// With Comfy.VueNodes enabled the widget renders as a DOM component whose
-// +/- buttons do `model = clamp(model +/- step)` and commit by calling
-// `widget.callback(value)` directly - never `setValue()` or `onClick()`. So the
-// grid step is applied two ways, both no-ops when the value is already on grid:
+// The two renderers step differently, so 2. is done twice:
 //
-//   a. On pointerdown, `options.step2` is set to the exact distance to the next
-//      grid point in that direction. The option is reactive, and a pointerdown
-//      precedes the click by a full task, so the component has re-rendered with
-//      the new step before it computes the value. It is restored on the click.
-//   b. As a safety net (and for the keyboard arrows, where there is no
-//      re-render between keydown and the handler), the wrapped callback
-//      redirects an armed change onto the grid.
+//   - LiteGraph canvas: the arrows call `onClick` / `incrementValue` /
+//     `decrementValue` on the widget, which are overridden per instance.
+//   - Vue nodes: the DOM component's +/- buttons do
+//     `model = clamp(model +/- step2)` and commit through `widget.callback`.
+//     On pointerdown, `options.step2` is set to the exact distance to the next
+//     grid point (the option is reactive, and pointerdown precedes the click by
+//     a full task, so the component re-renders with it first); the wrapped
+//     callback redirects an armed change onto the grid as a safety net, and is
+//     all there is for the keyboard arrows.
 //
-// Which widget this applies to is not known ahead of time: the `schema`
-// DynamicCombo creates and destroys the token widgets as the user switches
-// schema, and a token can be named anything. So instead of matching a widget
-// name, this looks for the `vfxGridStep` option that `_token_input()` in
-// vfx_naming.py attaches to any int token whose schema declares a step, and
-// patches that widget the first time it is touched.
+// Which widgets are stepped is not known ahead of time: the DynamicCombo creates
+// and destroys token widgets as the user switches schema, and a token can be
+// named anything. ComfyUI's INT widget also drops options it does not know, so
+// the grid cannot ride on the widget. It comes from the schema flags instead
+// (`grids` in `schema_meta()`, vfx_naming.py), and every widget of a node is
+// matched against them on the node's poll tick.
 //
-// If this script fails to load, the widgets fall back to increments of 1 and
-// remain fully usable.
+// If this script fails to load, the widgets fall back to the stock behaviour:
+// +/- by the step, typed values snapped to it.
 
-const OPTION = "vfxGridStep";
 const ARM_TIMEOUT_MS = 800;
 
 // Nearest multiple of `increment` strictly above / below the current value.
@@ -54,7 +57,25 @@ const gridStep = (value, increment, direction) =>
 const clampToWidget = (value, options) =>
     Math.min(options?.max ?? Infinity, Math.max(options?.min ?? -Infinity, value));
 
-/** The armed spinner press: { widget, increment, target } or null. */
+/** The next grid point of a patched widget in a direction, clamped. */
+const nextOnGrid = (widget, direction) => clampToWidget(
+    gridStep(widget.value, widget.__vfxGrid.step, direction), widget.options,
+);
+
+/**
+ * The grid of a token widget, `{ step, policy }`, or null when unstepped.
+ * Widgets are named after their path, `schema.<token>` or, for a revealed
+ * token, `schema.<owner>.<token>`, so the last part names the token.
+ */
+function gridOf(node, widget) {
+    if (widget?.type !== "number" || typeof widget.value !== "number") return null;
+    const parts = (widget.name ?? "").split(".");
+    if (parts[0] !== SCHEMA_WIDGET || parts.length < 2) return null;
+    const grid = schemaFlags(node).grids?.[parts[parts.length - 1]];
+    return grid && grid.step > 1 ? grid : null;
+}
+
+/** The armed Vue spinner press: { widget, increment, target } or null. */
 let armed = null;
 let armedTimer = null;
 
@@ -65,31 +86,34 @@ function disarm() {
 }
 
 /**
- * Give a widget free-form entry plus grid-aligned spinner buttons.
- * Widgets come and go with the schema, so this runs on first contact rather
- * than at node creation.
+ * Give a widget grid-aligned spinner buttons and the schema's typed-value
+ * policy. Safe to call on every tick: the grid is refreshed, the methods are
+ * wrapped once.
  */
-function patch(widget, increment) {
+function patch(widget, grid) {
+    widget.__vfxGrid = grid;
     if (widget.__vfxGridPatched) return;
     widget.__vfxGridPatched = true;
 
-    widget.options.step2 = increment;      // +/- increment
-    widget.options.step = increment * 10;  // drag sensitivity
+    widget.options.step2 = grid.step;      // +/- increment
+    widget.options.step = grid.step * 10;  // drag sensitivity
 
     const originalCallback = widget.callback;
     widget.callback = function (value, ...rest) {
         const target = this?.options ? this : widget;
+        const { step, policy } = target.__vfxGrid;
         let committed = value;
 
-        // Armed spinner press: force the result onto the grid.
+        // Armed Vue spinner press: force the result onto the grid.
         if (armed && armed.widget === target && typeof value === "number") {
             committed = armed.target;
             disarm();
         }
 
-        // Free-form manual entry: suppress the grid snap during commit.
+        // The stock callback snaps onto `step2`: keep that only when the
+        // schema enforces the grid, otherwise commit the value as entered.
         const saved = target.options.step2;
-        target.options.step2 = 1;
+        target.options.step2 = policy === "enforce" ? step : 1;
         try {
             if (typeof originalCallback === "function") {
                 return originalCallback.call(this, committed, ...rest);
@@ -99,35 +123,72 @@ function patch(widget, increment) {
             target.options.step2 = saved;
         }
     };
+
+    // Canvas renderer: arrow clicks (outer 40 px, as in the stock widget) and
+    // stepping through the widget's increment / decrement methods.
+    const originalClick = widget.onClick;
+    if (typeof originalClick === "function") {
+        widget.onClick = function (args) {
+            const { e, node } = args ?? {};
+            if (e && node) {
+                const x = e.canvasX - node.pos[0];
+                const width = this.width || node.size[0];
+                const direction = x < 40 ? -1 : x > width - 40 ? 1 : 0;
+                if (direction) {
+                    this.setValue(nextOnGrid(this, direction), args);
+                    return;
+                }
+            }
+            return originalClick.call(this, args);
+        };
+    }
+    for (const [method, direction] of [["incrementValue", 1], ["decrementValue", -1]]) {
+        if (typeof widget[method] !== "function") continue;
+        widget[method] = function (options) {
+            this.setValue(nextOnGrid(this, direction), options);
+        };
+    }
 }
 
-/** Resolve a DOM element inside a widget back to a grid-stepped widget. */
-function resolveWidget(element) {
-    const container = element.closest?.("[aria-label]");
-    const name = container?.getAttribute("aria-label");
-    if (!name) return null;
+/** Patch every stepped token widget a node currently has. */
+function patchGrids(node) {
+    for (const widget of node.widgets ?? []) {
+        const grid = gridOf(node, widget);
+        if (grid) patch(widget, grid);
+    }
+}
 
-    const nodeElement = container.closest("[data-node-id]");
+/** Resolve a DOM element inside a Vue node back to a patched widget. */
+function resolveWidget(element) {
+    const nodeElement = element.closest?.("[data-node-id]");
     const id = nodeElement?.dataset?.nodeId;
     if (!id) return null;
 
     const graph = app.graph;
     const node = graph?.getNodeById?.(id) ?? graph?.getNodeById?.(Number(id));
-    if (!node) return null;
-    if ((node.comfyClass ?? node.constructor?.comfyClass) !== NODE_CLASS) return null;
+    if (!node || classOf(node) !== NODE_CLASS) return null;
 
-    const widget = node.widgets?.find((w) => w.name === name);
-    if (!widget || typeof widget.value !== "number") return null;
-
-    const increment = Number(widget.options?.[OPTION]);
-    if (!Number.isFinite(increment) || increment <= 1) return null;
+    // The widget row is labelled with the widget's name. The +/- buttons
+    // carry an aria-label of their own ("Increment"), so walk up to the
+    // nearest label that names a widget.
+    let container = element.closest("[aria-label]");
+    let widget = null;
+    while (container && nodeElement.contains(container)) {
+        const name = container.getAttribute("aria-label");
+        widget = node.widgets?.find((w) => w.name === name) ?? null;
+        if (widget) break;
+        container = container.parentElement?.closest("[aria-label]");
+    }
+    const grid = gridOf(node, widget);
+    if (!grid) return null;
+    patch(widget, grid);
 
     // The component's own model is what it steps from; it is what the input
     // displays. Fall back to the widget value if that cannot be read.
     const shown = Number(container.querySelector("input")?.value);
     const base = Number.isFinite(shown) ? shown : widget.value;
 
-    return { widget, increment, base };
+    return { widget, increment: grid.step, base };
 }
 
 function arm(element, direction) {
@@ -135,8 +196,6 @@ function arm(element, direction) {
     if (!resolved) return;
 
     const { widget, increment, base } = resolved;
-    patch(widget, increment);
-
     const target = clampToWidget(
         gridStep(base, increment, direction), widget.options,
     );
@@ -240,6 +299,7 @@ function watch(node) {
 
     const tick = () => {
         applyVisibility(node, syncOverrides(node));
+        patchGrids(node);
         if (node.__vfxUnresolved) {
             // Linked, but the pipe's source is out of reach: execution still
             // uses the real pipe, so do not render a name from stale values.
