@@ -211,19 +211,27 @@ class TestBreakout(unittest.TestCase):
     def breakout(self):
         return node_pkg.vfx_naming.VFXNamingBreakout
 
-    def test_it_outputs_the_ten_results(self):
+    def test_it_outputs_the_ten_results_then_fields(self):
+        """`fields` comes last, so links to the older outputs keep their slot."""
         info = self.breakout().GET_NODE_INFO_V1()
         self.assertEqual(list(info["output_name"]),
-                         list(node_pkg.vfx_naming.RESULT_NAMES))
+                         list(node_pkg.vfx_naming.RESULT_NAMES) + ["fields"])
         self.assertEqual(list(info["output"]),
-                         ["STRING"] * 8 + ["INT", "STRING"])
+                         ["STRING"] * 8 + ["INT", "STRING", "STRING"])
         self.breakout().define_schema().validate()
 
     def test_it_unpacks_the_pipe(self):
         pipe = _parent()
         values = self.breakout().execute(naming_pipe=pipe).result
-        self.assertEqual(values, tuple(pipe["result"].values()))
+        self.assertEqual(values[:-1], tuple(pipe["result"].values()))
         self.assertEqual(values[0], "SHW_SEQ_0010_comp_v001/SHW_SEQ_0010_comp_v001")
+        self.assertEqual(json.loads(values[-1]), pipe["fields"])
+
+    def test_a_pipe_without_fields_gives_an_empty_object(self):
+        pipe = _parent()
+        del pipe["fields"]
+        values = self.breakout().execute(naming_pipe=pipe).result
+        self.assertEqual(json.loads(values[-1]), {})
 
     def test_it_refuses_a_foreign_pipe(self):
         with self.assertRaises(engine.NamingError):
@@ -237,3 +245,63 @@ class TestBreakout(unittest.TestCase):
         del pipe["result"]["extension"]
         with self.assertRaises(engine.NamingError):
             self.breakout().execute(naming_pipe=pipe)
+
+
+@needs_node
+class TestFields(unittest.TestCase):
+    """The resolved field values travel in the pipe as `fields`."""
+
+    def test_every_schema_token_is_a_field(self):
+        for schema in ("vfx_default", "studio"):
+            with self.subTest(schema=schema):
+                fields = _parent(schema)["fields"]
+                self.assertEqual(list(fields), list(engine.load_schema(schema).tokens))
+                self.assertTrue(all(isinstance(v, str) for v in fields.values()))
+
+    def test_fields_hold_the_resolved_values(self):
+        fields = _parent(show="ABC", shot=20)["fields"]
+        self.assertEqual(fields["show"], "ABC")
+        self.assertEqual(fields["shot"], "0020")
+        self.assertEqual(fields["version"], "v001")
+
+    def test_custom_tokens_are_fields_too(self):
+        pipe = _node().execute(schema={"schema": "vfx_default"},
+                               custom_tokens="client=ACME").result[0]
+        self.assertEqual(pipe["fields"]["client"], "ACME")
+
+    def test_an_override_shows_up_in_the_fields(self):
+        child = _child(_parent(), ["task"], task="roto")
+        self.assertEqual(child["fields"]["task"], "roto")
+
+
+@needs_node
+class TestGetField(unittest.TestCase):
+
+    def get(self, fields, field, default=""):
+        node = node_pkg.vfx_naming.VFXNamingGetField
+        return node.execute(fields=fields, field=field, default=default).result[0]
+
+    def fields(self):
+        pipe = _parent(show="ABC")
+        return node_pkg.vfx_naming.VFXNamingBreakout.execute(
+            naming_pipe=pipe).result[-1]
+
+    def test_the_schema_validates(self):
+        node_pkg.vfx_naming.VFXNamingGetField.define_schema().validate()
+
+    def test_it_reads_one_field(self):
+        self.assertEqual(self.get(self.fields(), "show"), "ABC")
+        self.assertEqual(self.get(self.fields(), "  shot "), "0010")
+
+    def test_a_missing_field_gives_the_default(self):
+        """A field the schema no longer has must not break the graph."""
+        self.assertEqual(self.get(self.fields(), "episode"), "")
+        self.assertEqual(self.get(self.fields(), "episode", "ep00"), "ep00")
+
+    def test_an_empty_fields_input_gives_the_default(self):
+        self.assertEqual(self.get("", "show", "x"), "x")
+
+    def test_it_refuses_text_that_is_not_a_fields_object(self):
+        for bad in ("not json", "[1, 2]", '"show"'):
+            with self.subTest(bad=bad), self.assertRaises(engine.NamingError):
+                self.get(bad, "show")

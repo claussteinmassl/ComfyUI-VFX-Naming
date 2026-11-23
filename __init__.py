@@ -1,13 +1,13 @@
 from comfy_api.latest import ComfyExtension, io
 
-from .vfx_naming import VFXNamingBreakout, VFXNamingConvention
+from .vfx_naming import VFXNamingBreakout, VFXNamingConvention, VFXNamingGetField
 
 WEB_DIRECTORY = "./web"
 
 
 class VFXNamingExtension(ComfyExtension):
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
-        return [VFXNamingConvention, VFXNamingBreakout]
+        return [VFXNamingConvention, VFXNamingBreakout, VFXNamingGetField]
 
 
 async def comfy_entrypoint() -> ComfyExtension:

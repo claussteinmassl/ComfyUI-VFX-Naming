@@ -77,6 +77,12 @@ RESULTS = (
 )
 RESULT_NAMES = tuple(name for name, _, _ in RESULTS)
 
+# The breakout's last output: every resolved field value as a JSON object.
+FIELDS_TOOLTIP = (
+    "Every field of the schema (plus custom_tokens) as a JSON object of "
+    "resolved values, e.g. {\"show\": \"SHW\", \"shot\": \"0010\"}. Read "
+    "single fields with VFX Naming Get Field.")
+
 
 def _sanitize_path(value, strict, warnings):
     """Clean a relative sub-path, keeping ComfyUI %date:...% tokens intact."""
@@ -463,7 +469,9 @@ def build(key, tokens, options, notes=None, overridden=None):
             None when it received no pipe. Only used for the report.
 
     Returns:
-        The pipe dict: version, schema, tokens, options and result.
+        The pipe dict: version, schema, tokens, options, result and fields
+        (the resolved value of every schema token and custom token, as
+        strings).
 
     Raises:
         NamingError: If strict validation rejects a value or a template.
@@ -544,6 +552,10 @@ def build(key, tokens, options, notes=None, overridden=None):
         "tokens": {name: tokens[name] for name in config.tokens if name in tokens},
         "options": options,
         "result": result,
+        # Every schema token in schema order, then the extra custom tokens -
+        # a stable set of keys for VFX Naming Get Field.
+        "fields": {name: "" if value is None else str(value)
+                   for name, value in values.items()},
     }
 
 
@@ -734,14 +746,83 @@ class VFXNamingBreakout(io.ComfyNode):
                 "the report."
             ),
             inputs=[PIPE.Input("naming_pipe", tooltip="From VFX Naming Convention.")],
+            # `fields` goes last so existing links keep their output slot.
             outputs=[kind.Output(name, tooltip=tooltip)
-                     for name, kind, tooltip in RESULTS],
+                     for name, kind, tooltip in RESULTS]
+                    + [io.String.Output("fields", tooltip=FIELDS_TOOLTIP)],
         )
 
     @classmethod
     def execute(cls, naming_pipe):
-        result = _check_pipe(naming_pipe)["result"]
-        return io.NodeOutput(*(result[name] for name in RESULT_NAMES))
+        pipe = _check_pipe(naming_pipe)
+        result = pipe["result"]
+        fields = json.dumps(pipe.get("fields") or {}, ensure_ascii=False)
+        return io.NodeOutput(*(result[name] for name in RESULT_NAMES), fields)
+
+
+class VFXNamingGetField(io.ComfyNode):
+    """Read one field from the breakout's `fields` output."""
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="VFXNamingGetField",
+            display_name="VFX Naming Get Field",
+            category="VFX/naming",
+            description=(
+                "Read one field (e.g. show, seq, shot) from the `fields` output "
+                "of a VFX Naming Breakout - for burn-ins, metadata or any other "
+                "text input. A field the schema does not have gives the default "
+                "instead of an error, so a schema change does not break the "
+                "graph."
+            ),
+            inputs=[
+                io.String.Input(
+                    "fields", force_input=True,
+                    tooltip="The `fields` output of VFX Naming Breakout."),
+                io.String.Input(
+                    "field", default="shot",
+                    tooltip="Field name as the schema spells it, e.g. show, "
+                            "seq, shot, version."),
+                io.String.Input(
+                    "default", default="",
+                    tooltip="Returned when the field does not exist."),
+            ],
+            outputs=[io.String.Output("value", tooltip="The field's value.")],
+        )
+
+    @classmethod
+    def execute(cls, fields, field, default=""):
+        return io.NodeOutput(get_field(fields, field, default))
+
+
+def get_field(fields, field, default=""):
+    """Look one field up in a breakout's `fields` JSON.
+
+    Args:
+        fields (str): The JSON object from VFX Naming Breakout.
+        field (str): The field name; surrounding whitespace is ignored.
+        default (str): Returned when the field is missing.
+
+    Returns:
+        str: The field's value, or `default`.
+
+    Raises:
+        NamingError: If `fields` is not a JSON object.
+    """
+    text = (fields or "").strip()
+    if not text:
+        return default
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        raise NamingError(
+            "fields: expected the `fields` output of a VFX Naming Breakout "
+            "(a JSON object).")
+    value = data.get((field or "").strip())
+    return default if value is None else str(value)
 
 
 # --- Schema flags for the frontend -------------------------------------------

@@ -173,7 +173,8 @@ Two nodes work together: **VFX Naming Convention** builds a naming pipe, and
 values. A single node still covers the simple case — connect its
 `naming_pipe` straight into a breakout — while a shot with several passes can
 chain further Naming Convention nodes off the first one; see **Inheriting and
-overriding (naming pipe)** below.
+overriding (naming pipe)** below. A third node, **VFX Naming Get Field**,
+reads single raw fields (show, sequence, shot, ...) from the breakout.
 
 ### VFX Naming Convention
 
@@ -231,7 +232,8 @@ result, bundled for a downstream **VFX Naming Breakout** node or another
 ### VFX Naming Breakout
 
 **VFX Naming Breakout** — category `VFX/naming`. Unpacks a `naming_pipe` into
-the ten values a single naming node used to output directly.
+the ten values a single naming node used to output directly, plus `fields`
+with every raw field value.
 
 #### Inputs
 
@@ -253,11 +255,63 @@ the ten values a single naming node used to output directly.
 | `example_filename` | `SHW_SEQ_0010_comp_vnd_v001.1001.exr` |
 | `first_frame` | `1001` (INT — feed frame-range inputs) |
 | `report` | full breakdown plus any validation warnings |
+| `fields` | `{"show": "SHW", "seq": "SEQ", "shot": "0010", ...}` — every field as JSON, see [Reading single fields](#reading-single-fields-vfx-naming-get-field) |
 
 Wire the breakout's `filename_prefix` into the saver's `filename_prefix`
 widget (convert it to an input first: right-click the Save node → *Convert
 widget to input*, or drag from the breakout's output onto the widget in
 recent frontends).
+
+### Reading single fields (VFX Naming Get Field)
+
+The breakout's results are finished names and paths. To drive other parts of
+the graph with the raw values behind them — the shot in a burn-in, show,
+sequence and shot in metadata fields — use the breakout's `fields` output
+together with the **VFX Naming Get Field** node.
+
+**How it works**
+
+- `fields` is one STRING output holding a JSON object with the resolved value
+  of every field of the schema, in schema order, followed by any
+  `custom_tokens`.
+- Values are strings, formatted the way they appear in the name: `shot` →
+  `0010` in `vfx_default`, `sh010` in `studio`; `version` → `v001`. A field
+  the current settings leave out (e.g. an unrevealed optional field) is an
+  empty string.
+- The breakout's outputs stay the same for every schema — `fields` is always
+  the last one — so existing links never move when a schema gains or loses
+  fields.
+
+**VFX Naming Get Field** — category `VFX/naming` — picks one value out of
+`fields`, for a burn-in, a metadata field or any other text input:
+
+| Input | Purpose |
+|---|---|
+| `fields` | the breakout's `fields` output |
+| `field` | field name as the schema spells it, e.g. `show`, `seq`, `shot` |
+| `default` | returned when the field does not exist (empty by default) |
+
+The single output `value` is a STRING. Use one Get Field node per value:
+
+```
+[VFX Naming Breakout] ── fields ──► [VFX Naming Get Field  field = shot] ──► burn-in text
+                      └─ fields ──► [VFX Naming Get Field  field = seq ] ──► metadata
+```
+
+![Breakout fields feeding three Get Field nodes](images/get-field-overview.png)
+
+*`vfx_default`: `show` and `shot` come straight from the naming node; the
+schema has no `episode`, so that node returns its default `ep00`.*
+
+A missing field gives `default` instead of an error, so switching to a schema
+that lacks a field does not break the graph. Only text that is not a JSON
+object raises an error.
+
+![The same graph after switching to the studio schema](images/get-field-schema-switch.png)
+
+*The same graph switched to `studio`: `show` and `shot` keep working (`shot`
+now reads `sh040`, as the studio schema formats it), and `seq`, which
+`studio` does not have, falls back to `no seq`.*
 
 ## Inheriting and overriding (naming pipe)
 
