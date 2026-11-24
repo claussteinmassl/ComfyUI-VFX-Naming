@@ -14,6 +14,8 @@ export const OVERRIDES_WIDGET = "overrides";
 export const OPTION_NAMES = [
     "folders", "strict", "parent_path", "template_override", "custom_tokens",
 ];
+// The field that picks one of a schema's `outputs` (naming_schema.py).
+export const OUTPUT_FIELD = "output";
 
 const SCHEMAS_ROUTE = "/vfx_naming/schemas";
 
@@ -48,6 +50,21 @@ export async function loadSchemaFlags() {
 export function schemaFlags(node) {
     const key = findWidget(node, SCHEMA_WIDGET)?.value;
     return schemaFlagCache[key] ?? { tokens: {}, options: {} };
+}
+
+/** The output a node renders: its `output` field, or the schema's first output. */
+export function activeOutput(node) {
+    const value = findWidget(node, `${SCHEMA_WIDGET}.${OUTPUT_FIELD}`)?.value;
+    if (value) return value;
+    return Object.keys(schemaFlags(node).outputs ?? {})[0] ?? "";
+}
+
+/**
+ * What an output sets for one field: `{ default?, visible?, overridable? }`.
+ * Empty for a field the output does not mention, or without outputs.
+ */
+export function outputFlags(node, field, output = activeOutput(node)) {
+    return schemaFlags(node).outputs?.[output]?.tokens?.[field] ?? {};
 }
 
 /** Hide or show one widget in both renderers. Returns whether anything changed. */
@@ -85,7 +102,8 @@ export function relayout(node) {
 }
 
 /**
- * Hide what the selected schema hides, plus the `overrides` bookkeeping widget.
+ * Hide what the selected schema and output hide, plus the `overrides`
+ * bookkeeping widget.
  * `extraHidden(widget, field)` lets the override UI collapse inherited rows.
  */
 export function applyVisibility(node, extraHidden = () => false) {
@@ -96,6 +114,7 @@ export function applyVisibility(node, extraHidden = () => false) {
         const hidden = widget.name === OVERRIDES_WIDGET
             || (OPTION_NAMES.includes(widget.name)
                 && flags.options?.[widget.name]?.visible === false)
+            || (!!field && outputFlags(node, field).visible === false)
             || !!extraHidden(widget, field);
         if (setHidden(widget, hidden)) changed = true;
     }

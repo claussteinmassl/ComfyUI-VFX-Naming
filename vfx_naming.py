@@ -21,6 +21,7 @@ Default schema:
 Reference: "VFX Naming Convention" paper by Victor Perez, VFX Supervisor.
 """
 
+import copy
 import json
 import os
 import re
@@ -32,6 +33,7 @@ from .naming_schema import (
     NO_SCHEMA,
     NamingError,
     OPTION_NAMES,
+    OUTPUT_FIELD,
     load_schema,
     parse_custom_tokens,
     render,
@@ -211,9 +213,24 @@ def _schema_option(key):
         # Keeps the node loadable; running it reports where it looked.
         return io.DynamicCombo.Option(key, [])
     config = load_schema(key)
+    # With outputs, a new node starts on the default output's values. Which
+    # fields exist comes from the schema itself: an output may hide a field
+    # another output shows, so the frontend hides it per output.
+    start = config.variant()
+    inputs = []
+    if config.outputs:
+        inputs.append(io.Combo.Input(
+            OUTPUT_FIELD, options=config.outputs, default=config.default_output,
+            tooltip=("Which output of the schema to render: "
+                     + ", ".join(f"{name} ({config.output_config(name)['label']})"
+                                 for name in config.outputs)
+                     + ". Choosing one sets the fields it defines.")))
     # A revealed token sits under the dropdown that reveals it instead.
-    inputs = [_token_input(spec, config) for name, spec in config.tokens.items()
-              if spec.visible and name not in config.revealed_by]
+    for name, spec in config.tokens.items():
+        if not spec.visible or name in config.revealed_by:
+            continue
+        shown = start.tokens[name]
+        inputs.append(_token_input(shown if shown.visible else spec, config))
     return io.DynamicCombo.Option(key, inputs)
 
 
@@ -400,14 +417,19 @@ def _parse_overrides(text):
     return list(dict.fromkeys(names))
 
 
-def _inherit(pipe, own_tokens, own_options, overridden):
+def _inherit(pipe, own_tokens, own_options, overridden, own_output=None):
     """Take everything from an incoming pipe except the fields this node overrides.
+
+    A node that overrides `output` chooses that output itself: the fields the
+    output gives a default take it over the inherited value, and its own
+    overrides still win unless the output locks or hides the field.
 
     Args:
         pipe: The incoming naming pipe.
         own_tokens: This node's raw token input.
         own_options: This node's option values.
         overridden: Field names this node overrides.
+        own_output: This node's own `output` value.
 
     Returns:
         The new pipe, rendered from the merged inputs.
@@ -418,13 +440,35 @@ def _inherit(pipe, own_tokens, own_options, overridden):
     """
     pipe = _check_pipe(pipe)
     key = pipe["schema"]
-    config = load_schema(key)
+    base = load_schema(key)
     tokens = dict(pipe["tokens"])
     options = dict(pipe["options"])
+    output = pipe.get("output") or ""
 
     refused = []          # human-readable reasons, for the error/warning text
     refused_names = set()  # field names that were refused, for `applied`
+    if OUTPUT_FIELD in overridden:
+        if base.outputs:
+            output = own_output or ""
+        else:
+            refused.append(f"schema '{key}' has no field '{OUTPUT_FIELD}'")
+            refused_names.add(OUTPUT_FIELD)
+    chosen = OUTPUT_FIELD in overridden and OUTPUT_FIELD not in refused_names
+    try:
+        config = base.variant(output)
+    except NamingError as error:
+        if base.effective_options(options)["strict"]:
+            raise
+        refused.append(str(error))
+        config = base.variant()
+    output = config.output
+    if chosen:
+        # Choosing an output sets the fields it defines.
+        tokens.update(copy.deepcopy(config.output_defaults))
+
     for name in overridden:
+        if name == OUTPUT_FIELD:
+            continue
         if name in OPTION_NAMES:
             flags = config.option_flags(name)
             if flags["visible"] and flags["overridable"]:
@@ -433,7 +477,9 @@ def _inherit(pipe, own_tokens, own_options, overridden):
             refused.append(f"'{name}' is locked by schema '{key}'")
         elif name in config.tokens:
             if not config.tokens[name].overridable:
-                refused.append(f"'{name}' is locked by schema '{key}'")
+                by = (f"output '{config.output}'" if base.tokens[name].overridable
+                      else f"schema '{key}'")
+                refused.append(f"'{name}' is locked by {by}")
             elif name not in own_tokens:
                 # A different schema on this node, or a stale override list -
                 # there is nothing of this node's own to apply.
@@ -453,10 +499,11 @@ def _inherit(pipe, own_tokens, own_options, overridden):
         notes.append(f"Cannot override: {joined} - the inherited value is used.")
 
     applied = [n for n in overridden if n not in refused_names]
-    return build(key, tokens, options, notes=notes, overridden=applied)
+    return build(key, tokens, options, output=output, notes=notes,
+                 overridden=applied)
 
 
-def build(key, tokens, options, notes=None, overridden=None):
+def build(key, tokens, options, output=None, notes=None, overridden=None):
     """Render one name and wrap it, with the inputs it came from, as a pipe.
 
     Args:
@@ -464,6 +511,7 @@ def build(key, tokens, options, notes=None, overridden=None):
         tokens: Raw per-token input, as the DynamicCombo delivers it.
         options: The node options; missing ones take their defaults and the
             ones the schema hides are fixed.
+        output: The schema output to render; None or "" for the default.
         notes: Warnings raised before rendering, e.g. by an override merge.
         overridden: Field names this node overrode on an incoming pipe, or
             None when it received no pipe. Only used for the report.
@@ -476,10 +524,15 @@ def build(key, tokens, options, notes=None, overridden=None):
     Raises:
         NamingError: If strict validation rejects a value or a template.
     """
-    config = load_schema(key)
-    options = config.effective_options(options)
+    base = load_schema(key)
+    options = base.effective_options(options)
     strict = options["strict"]
     warnings = list(notes or [])
+    try:
+        config = base.variant(output)
+    except NamingError as error:
+        _fail(f"{error} The default output is used.", strict, warnings)
+        config = base.variant()
 
     values = {}
     for name, spec in config.tokens.items():
@@ -551,12 +604,29 @@ def build(key, tokens, options, notes=None, overridden=None):
         # initial value on the next build(), the same as a fresh node.
         "tokens": {name: tokens[name] for name in config.tokens if name in tokens},
         "options": options,
+        # The rendered output; "" for a schema without outputs.
+        "output": config.output,
         "result": result,
-        # Every schema token in schema order, then the extra custom tokens -
-        # a stable set of keys for VFX Naming Get Field.
-        "fields": {name: "" if value is None else str(value)
-                   for name, value in values.items()},
+        "fields": _fields(config, values),
     }
+
+
+def _fields(config, values):
+    """Every resolved value, keyed for VFX Naming Get Field.
+
+    Args:
+        config: The schema view that rendered the name.
+        values: The resolved token values, custom tokens included.
+
+    Returns:
+        dict: The output (when the schema has outputs), then every schema
+        token in schema order, then the extra custom tokens - a stable set
+        of keys. All values are strings.
+    """
+    fields = {OUTPUT_FIELD: config.output} if config.output else {}
+    fields.update({name: "" if value is None else str(value)
+                   for name, value in values.items()})
+    return fields
 
 
 # --- Node --------------------------------------------------------------------
@@ -682,10 +752,14 @@ class VFXNamingConvention(io.ComfyNode):
                    "parent_path": parent_path,
                    "template_override": template_override,
                    "custom_tokens": custom_tokens}
+        # The output dropdown rides along with the token fields.
+        output = tokens.pop(OUTPUT_FIELD, None)
         if naming_pipe is None:
-            return io.NodeOutput(build(supplied.get("schema"), tokens, options))
+            return io.NodeOutput(
+                build(supplied.get("schema"), tokens, options, output=output))
         return io.NodeOutput(
-            _inherit(naming_pipe, tokens, options, _parse_overrides(overrides)))
+            _inherit(naming_pipe, tokens, options, _parse_overrides(overrides),
+                     own_output=output))
 
     @staticmethod
     def _report(key, config, values, extras, template_override, shot_id,
@@ -698,6 +772,8 @@ class VFXNamingConvention(io.ComfyNode):
         source = schema_source(key)
         if source:
             lines.append(f"  Source : {source[0]} ({source[1]})")
+        if config.output:
+            lines.append(f"  Output : {config.output_label} ({config.output})")
         lines.append("")
 
         width = max([len(s.label) for s in config.tokens.values()] + [12])
@@ -836,9 +912,10 @@ def schema_meta():
     Hidden tokens are left out - they have no widget to describe.
 
     Returns:
-        A dict keyed by schema, each with `tokens` and `options` flag maps
-        and a `grids` map of the stepped int tokens (revealed ones included),
-        giving each its `step` and `policy`.
+        A dict keyed by schema, each with `tokens` and `options` flag maps,
+        a `grids` map of the stepped int tokens (revealed ones included),
+        giving each its `step` and `policy`, and an `outputs` map of what
+        each schema output sets (empty without outputs).
     """
     meta = {}
     for key in schema_names():
@@ -863,6 +940,11 @@ def schema_meta():
                       for name, spec in config.tokens.items()
                       if spec.visible and spec.is_int and spec.step
                       and spec.step > 1},
+            # Per output, what it sets: {"movie": {"label": ..., "tokens":
+            # {"ext": {"default": "mp4", "overridable": false}}}}. Empty
+            # without outputs.
+            "outputs": {name: config.output_config(name)
+                        for name in config.outputs},
         }
     return meta
 

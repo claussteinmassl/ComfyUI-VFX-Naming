@@ -1,7 +1,8 @@
 import { app } from "../../scripts/app.js";
 import {
-    NODE_CLASS, OVERRIDES_WIDGET, SCHEMA_WIDGET, OPTION_NAMES,
-    applyVisibility, classOf, fieldOf, findWidget, relayout, schemaFlags,
+    NODE_CLASS, OVERRIDES_WIDGET, OUTPUT_FIELD, SCHEMA_WIDGET, OPTION_NAMES,
+    activeOutput, applyVisibility, classOf, fieldOf, findWidget, outputFlags,
+    relayout, schemaFlags,
 } from "./vfx_widgets.js";
 
 // Per-field overrides for a naming node that receives a naming pipe.
@@ -29,10 +30,19 @@ import {
 //
 // State lives by field name in `overrides` and on the node, never on widget
 // objects alone: the DynamicCombo recreates token widgets on every rebuild.
+//
+// Schema outputs. A schema can offer several outputs (an image sequence, a
+// movie) through the `output` field. Choosing one - on a node without a pipe,
+// or by overriding `output` on a node with one - sets the fields it gives a
+// default. On a child those rows are in a fourth state, "from output": they
+// show the output's value instead of the upstream one, and can still be
+// overridden unless the output locks them.
 
 export const PIPE_INPUT = "naming_pipe";
 export const ACCENT = "#f0a030";
-const GLYPH = { inherited: "○ ", overridden: "● ", locked: "⛓ " };
+// Rows whose value comes from the output this node chose.
+export const OUTPUT_ACCENT = "#6fa8dc";
+const GLYPH = { inherited: "○ ", fromOutput: "◆ ", overridden: "● ", locked: "⛓ " };
 const RESET = "↺";
 const MAX_HOPS = 32;
 // How many sync passes a pending restore waits for sub-widgets that a token's
@@ -113,13 +123,29 @@ function overridable(node, field) {
         const option = flags.options?.[field];
         return option?.visible !== false && option?.overridable !== false;
     }
-    return flags.tokens?.[field]?.overridable !== false;
+    if (field === OUTPUT_FIELD) return true;
+    return flags.tokens?.[field]?.overridable !== false
+        && outputFlags(node, field).overridable !== false;
+}
+
+/** Whether a child chooses its output itself (it overrides `output`). */
+const choosesOutput = (overrides) => overrides.has(OUTPUT_FIELD);
+
+/** The value the chosen output gives a field, or undefined. */
+function outputDefault(node, field, overrides) {
+    if (!choosesOutput(overrides) || field === OUTPUT_FIELD) return undefined;
+    return outputFlags(node, field).default;
 }
 
 export function stateOf(node, field, overrides) {
     if (!overridable(node, field)) return "locked";
-    return overrides.has(field) ? "overridden" : "inherited";
+    if (overrides.has(field)) return "overridden";
+    return outputDefault(node, field, overrides) !== undefined ? "fromOutput" : "inherited";
 }
+
+/** Fields an output takes charge of: the ones it sets, locks or hides. */
+const fieldsSetBy = (node, output) =>
+    Object.keys(schemaFlags(node).outputs?.[output]?.tokens ?? {});
 
 /** A token's own row, as opposed to a sub-widget it reveals. */
 export const isFieldRow = (widget, field) =>
@@ -179,9 +205,14 @@ function mirror(node, source, overrides) {
         const state = stateOf(node, field, overrides);
         if (state === "overridden") continue;
         const upstream = findWidget(source, widget.name);
-        if (!upstream) continue;
+        // A field the chosen output sets shows the output's value, locked
+        // or not; its sub-widgets (a custom value, a layer) stay inherited.
+        const fromOutput = isFieldRow(widget, field)
+            ? outputDefault(node, field, overrides) : undefined;
+        if (!upstream && fromOutput === undefined) continue;
+        const target = fromOutput !== undefined ? fromOutput : upstream.value;
 
-        if (state === "inherited" && mirrored.has(widget)
+        if (state !== "locked" && mirrored.has(widget)
                 && widget.value !== mirrored.get(widget)) {
             // Changed since we last mirrored it: the user edited it. The fresh
             // edit wins over any remembered value.
@@ -192,8 +223,8 @@ function mirror(node, source, overrides) {
             changed = true;
             continue;
         }
-        if (widget.value !== upstream.value) {
-            widget.value = upstream.value;
+        if (widget.value !== target) {
+            widget.value = target;
             changed = true;
         }
         mirrored.set(widget, widget.value);
@@ -245,7 +276,8 @@ function decorate(widget, state, glyph) {
     if (widget.element?.style) {
         // DOM widgets (multiline text) sit on top of the canvas: style the element.
         widget.element.style.opacity = state === "inherited" ? "0.5" : "";
-        widget.element.style.outline = state === "overridden" ? `1.5px solid ${ACCENT}` : "";
+        widget.element.style.outline = state === "overridden" ? `1.5px solid ${ACCENT}`
+            : state === "fromOutput" ? `1.5px solid ${OUTPUT_ACCENT}` : "";
         // A textarea shows its name as placeholder rather than a label; it
         // never gets the switch, so the placeholder keeps the glyph.
         if ("placeholder" in widget.element) {
@@ -296,16 +328,30 @@ function wrapCanvasDraw(widget) {
         const state = this.__vfxState;
         ctx.save();
         this.__vfxDrawing = true;
+        // A disabled stock widget draws its label only: its `_displayValue`
+        // is empty while `computedDisabled` (which the node keeps on the
+        // widget, frontend 1.52.7) is set. A locked row should still show the
+        // value it is locked to, so draw it enabled but dimmed; clicks still
+        // see the real flags and are ignored.
+        const disabled = this.disabled;
+        const computed = this.computedDisabled;
         try {
             if (state === "inherited") ctx.globalAlpha *= 0.5;
+            if (state === "locked") {
+                ctx.globalAlpha *= 0.6;
+                this.disabled = false;
+                this.computedDisabled = false;
+            }
             this.drawWidget(ctx, { width, showText: !lowQuality });
         } finally {
+            this.disabled = disabled;
+            this.computedDisabled = computed;
             this.__vfxDrawing = false;
             ctx.restore();
         }
-        if (state === "overridden") {
+        if (state === "overridden" || state === "fromOutput") {
             ctx.save();
-            ctx.strokeStyle = ACCENT;
+            ctx.strokeStyle = state === "overridden" ? ACCENT : OUTPUT_ACCENT;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             ctx.roundRect(15, y, width - 30, height, height * 0.5);
@@ -420,8 +466,8 @@ function drawReset(widget, ctx, width, y, height) {
     ctx.restore();
 }
 
-const togglable = (widget) =>
-    widget.__vfxGlyph && (widget.__vfxState === "inherited" || widget.__vfxState === "overridden");
+const togglable = (widget) => widget.__vfxGlyph
+    && ["inherited", "fromOutput", "overridden"].includes(widget.__vfxState);
 
 function finish(node) {
     syncOverrides(node);
@@ -563,7 +609,8 @@ export function decorateVue(node) {
         const state = widget?.__vfxState;
         const value = cell.nextElementSibling;
         if (value?.style) value.style.opacity = state === "inherited" ? "0.45" : "";
-        cell.style.color = state === "overridden" ? ACCENT : "";
+        cell.style.color = state === "overridden" ? ACCENT
+            : state === "fromOutput" ? OUTPUT_ACCENT : "";
         cell.style.cursor = widget && togglable(widget) ? "pointer" : "";
         decorateResetSpan(cell, state === "overridden" && !!widget && togglable(widget));
     }
@@ -679,6 +726,54 @@ export function menuItems(node) {
     return [null, { content: "VFX overrides", has_submenu: true, submenu: { options } }];
 }
 
+// --- Choosing an output --------------------------------------------------------
+
+/**
+ * Apply an output change. Choosing an output sets the fields it defines, so a
+ * switch away and back is a clean reset; nothing is remembered per output.
+ *
+ *   - Without a pipe, the node's own widgets take the output's defaults.
+ *   - With a pipe, a node that chooses its output (overrides `output`) drops
+ *     its overrides of the fields the output takes charge of; mirroring then
+ *     shows the output's values. A node that inherits the output changes
+ *     nothing: its values follow upstream.
+ *
+ * The first look at a node (creation, workflow load), a schema switch and
+ * linking or unlinking the pipe only record the output, so none of them
+ * rewrites values.
+ */
+function trackOutput(node, linked) {
+    const schema = findWidget(node, SCHEMA_WIDGET)?.value;
+    const overrides = readOverrides(node);
+    const chosen = !linked || choosesOutput(overrides);
+    const output = activeOutput(node);
+    const context = `${schema}\u0000${linked}`;
+    const key = `${context}\u0000${chosen ? output : ""}`;
+    const previous = node.__vfxOutputKey;
+    node.__vfxOutputKey = key;
+    if (previous === undefined || previous === key || !chosen || !output) return;
+    // A schema switch, or linking / unlinking the pipe, only records.
+    if (!previous.startsWith(`${context}\u0000`)) return;
+
+    if (!linked) {
+        const tokens = schemaFlags(node).outputs?.[output]?.tokens ?? {};
+        for (const [field, flags] of Object.entries(tokens)) {
+            if (flags.default === undefined) continue;
+            const widget = findWidget(node, `${SCHEMA_WIDGET}.${field}`);
+            if (widget && widget.value !== flags.default) widget.value = flags.default;
+        }
+        node.setDirtyCanvas?.(true, true);
+        return;
+    }
+    let dropped = false;
+    for (const field of fieldsSetBy(node, output)) {
+        if (overrides.delete(field)) dropped = true;
+        dropStash(node, field);
+        forget(node, field);
+    }
+    if (dropped) writeOverrides(node, overrides);
+}
+
 // --- Collapse switch ---------------------------------------------------------
 //
 // "Hide inherited": while on, inherited and locked rows (the Schema row too)
@@ -773,6 +868,7 @@ export function syncOverrides(node) {
     if (node.__vfxPending) applyPending(node, readOverrides(node));
     const { linked, source } = upstreamOf(node);
     node.__vfxUnresolved = linked && !source;
+    trackOutput(node, linked);
     if (!linked) {
         if (node.__vfxLinked) {
             for (const widget of node.widgets ?? []) undecorate(widget);

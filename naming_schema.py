@@ -78,6 +78,26 @@ Schema templates
                    stays relative, because ComfyUI's own savers reject anything
                    outside the output folder.
 
+Outputs
+-------
+    outputs        named variants of the schema that share its tokens, e.g. an
+                   image sequence and a movie: {"images": {...}, "movie": {...}}.
+                   The first one is the default. The node offers them in an
+                   `output` dropdown above the token fields. Each output may
+                   carry:
+        label          shown in the report (default: the output's key)
+        folders, file, filename, shot_id, root
+                       replace the schema's template of the same name; a
+                       template the output leaves out comes from the schema
+        tokens         per token, `default`, `visible` and/or `overridable`,
+                       with the same meaning as on the token itself. Choosing
+                       the output sets each `default`; `visible: false` hides
+                       the field and fixes it to that default; `overridable:
+                       false` locks it in a node that chooses the output
+                       through a pipe override. An output cannot show a token
+                       the schema hides, nor touch a revealed token or the
+                       counter
+
 Preset marker
 -------------
     builtin        true on the presets that ship in the node's `schemas/`
@@ -92,6 +112,7 @@ Node options
                    {"overridable": false} locks it against downstream overrides
 """
 
+import copy
 import json
 import os
 import re
@@ -147,6 +168,14 @@ OPTION_DEFAULTS = {
 }
 
 OPTION_FLAG_KEYS = ("visible", "overridable", "value")
+
+# The node field that picks one of a schema's `outputs`.
+OUTPUT_FIELD = "output"
+
+# What an output may set: whole templates, and per token these keys.
+OUTPUT_TEMPLATE_KEYS = ("folders", "file", "filename", "shot_id", "root")
+OUTPUT_KEYS = ("label", "tokens") + OUTPUT_TEMPLATE_KEYS
+OUTPUT_TOKEN_KEYS = ("default", "visible", "overridable")
 
 
 def _flag(config, key, where):
@@ -553,6 +582,7 @@ class Schema:
 
     def __init__(self, key, data):
         self.key = key
+        self._data = data
         self.label = data.get("label", key)
         self.description = data.get("description", "")
         self.tokens = {
@@ -580,6 +610,136 @@ class Schema:
                 f"(found {', '.join(counters)}).")
         self.counter = counters[0] if counters else None
         self._options = self._read_options(key, data.get("options") or {})
+
+        # The active output of this view, and every output's resolved view.
+        # A schema without `outputs` is its own (only) view, named "".
+        self.output = ""
+        self.output_label = ""
+        self.output_defaults = {}
+        self._variants = {}
+        self._outputs_raw = data.get("outputs") or {}
+        self._read_outputs(key, data.get("outputs"))
+
+    @property
+    def outputs(self):
+        """Output keys in schema order; empty when the schema declares none."""
+        return list(self._variants)
+
+    @property
+    def default_output(self):
+        """The output a new node starts on, "" without outputs."""
+        return self.outputs[0] if self._variants else ""
+
+    def output_config(self, name):
+        """What one output sets, as written in the schema.
+
+        Args:
+            name: An output key.
+
+        Returns:
+            A dict with `label` and `tokens` (per token: the keys it sets).
+        """
+        raw = self._outputs_raw[name]
+        return {"label": raw.get("label", name),
+                "tokens": copy.deepcopy(raw.get("tokens") or {})}
+
+    def variant(self, name=None):
+        """The schema as one of its outputs renders it.
+
+        Args:
+            name: An output key; None or "" picks the default output.
+
+        Returns:
+            Schema: A view with the output's templates and token settings
+            applied, or this schema itself when it declares no outputs.
+
+        Raises:
+            NamingError: If `name` is not one of the schema's outputs.
+        """
+        if not self._variants:
+            return self
+        name = name or self.default_output
+        if name not in self._variants:
+            raise NamingError(
+                f"Schema '{self.key}' has no output '{name}'. Known: "
+                f"{', '.join(self.outputs)}.")
+        return self._variants[name]
+
+    def _read_outputs(self, key, block):
+        """Validate the `outputs` block and build one view per output.
+
+        Raises:
+            NamingError: For a malformed block, an unknown key or token, an
+                output showing a token the schema hides, touching a revealed
+                token or the counter, or a default outside a closed dropdown.
+        """
+        if block is None:
+            return
+        where = f"Schema '{key}'"
+        if not isinstance(block, dict) or not block:
+            raise NamingError(f"{where}: 'outputs' must map output names to "
+                              f"their settings (got {block!r}).")
+        if OUTPUT_FIELD in self.tokens:
+            raise NamingError(
+                f"{where}: a token named '{OUTPUT_FIELD}' clashes with the "
+                "output field - rename the token.")
+        for name, config in block.items():
+            here = f"{where}, output '{name}'"
+            if not isinstance(config, dict):
+                raise NamingError(f"{here}: must be a dict (got {config!r}).")
+            stray = sorted(set(config) - set(OUTPUT_KEYS))
+            if stray:
+                raise NamingError(
+                    f"{here}: unknown key(s) {', '.join(stray)}. Known: "
+                    f"{', '.join(OUTPUT_KEYS)}.")
+            patches = config.get("tokens") or {}
+            if not isinstance(patches, dict):
+                raise NamingError(f"{here}: 'tokens' must map token names to "
+                                  f"settings (got {patches!r}).")
+            data = copy.deepcopy(self._data)
+            data.pop("outputs")
+            for template in OUTPUT_TEMPLATE_KEYS:
+                if template in config:
+                    data[template] = copy.deepcopy(config[template])
+            for token, patch in patches.items():
+                self._check_output_patch(here, token, patch)
+                data["tokens"][token] = {**(data["tokens"][token] or {}), **patch}
+            view = Schema(key, data)
+            view.output = str(name)
+            view.output_label = str(config.get("label", name))
+            view.output_defaults = {t: p["default"] for t, p in patches.items()
+                                    if "default" in p}
+            view._variants = self._variants   # shared, filled as we go
+            view._outputs_raw = self._outputs_raw
+            self._variants[str(name)] = view
+
+    def _check_output_patch(self, here, token, patch):
+        """Refuse an output token setting the schema cannot honour."""
+        spec = self.tokens.get(token)
+        if spec is None:
+            raise NamingError(f"{here}: unknown token '{token}'.")
+        if not isinstance(patch, dict):
+            raise NamingError(f"{here}: token '{token}' must be a dict of "
+                              f"{', '.join(OUTPUT_TOKEN_KEYS)} (got {patch!r}).")
+        stray = sorted(set(patch) - set(OUTPUT_TOKEN_KEYS))
+        if stray:
+            raise NamingError(
+                f"{here}: token '{token}' has unknown key(s) {', '.join(stray)}. "
+                f"Known: {', '.join(OUTPUT_TOKEN_KEYS)}.")
+        if token in self.revealed_by or spec.is_counter:
+            raise NamingError(
+                f"{here}: token '{token}' cannot be set by an output - it is "
+                + ("revealed by another token." if token in self.revealed_by
+                   else "the counter."))
+        if patch.get("visible") is True and not spec.visible:
+            raise NamingError(
+                f"{here}: token '{token}' is hidden by the schema; an output "
+                "cannot show it.")
+        if ("default" in patch and spec.presets and not spec.allow_custom
+                and str(patch["default"]) not in spec.presets):
+            raise NamingError(
+                f"{here}: default {patch['default']!r} for token '{token}' is "
+                f"not one of its presets ({', '.join(spec.presets)}).")
 
     def spec(self, name):
         return self.tokens.get(name) or TokenSpec(name, {"optional": True})

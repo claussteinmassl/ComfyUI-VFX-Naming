@@ -607,6 +607,11 @@ class TestRegistration(unittest.TestCase):
         self.assertEqual(meta["vfx_default"]["grids"],
                          {"shot": {"step": 10, "policy": "warn"}})
 
+    def test_schema_meta_lists_no_outputs_for_the_presets(self):
+        meta = node_pkg.vfx_naming.schema_meta()
+        self.assertEqual(meta["vfx_default"]["outputs"], {})
+        self.assertEqual(meta["studio"]["outputs"], {})
+
 
 @needs_node
 class TestGeneratedInputs(unittest.TestCase):

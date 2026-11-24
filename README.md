@@ -190,6 +190,7 @@ widgets, and none of the token names below are known to the Python code.
 |---|---|
 | `naming_pipe` | optional — inherit schema, tokens and options from an upstream VFX Naming Convention node instead of configuring this node from scratch; see **Inheriting and overriding (naming pipe)** below |
 | `schema` | which JSON schema to render (see [Where schemas live](#where-schemas-live)) — and therefore which fields appear below it. Ignored while `naming_pipe` is connected: the schema always comes from upstream |
+| `output` | only on schemas with [outputs](#outputs--one-schema-several-variants): which variant to render, e.g. `images` or `movie`. Picking one sets the fields it defines |
 | `folders` | on = render the schema's folder levels, off = files straight into the output folder |
 | `strict` | on = abort on any violation; off = auto-correct and warn |
 | `parent_path` | optional sub-path, e.g. `SHW/SEQ` or `%date:yyyy-MM-dd%` |
@@ -273,7 +274,9 @@ together with the **VFX Naming Get Field** node.
 
 - `fields` is one STRING output holding a JSON object with the resolved value
   of every field of the schema, in schema order, followed by any
-  `custom_tokens`.
+  `custom_tokens`. A schema with
+  [outputs](#outputs--one-schema-several-variants) puts the active output
+  first, as `output`.
 - Values are strings, formatted the way they appear in the name: `shot` →
   `0010` in `vfx_default`, `sh010` in `studio`; `version` → `v001`. A field
   the current settings leave out (e.g. an unrevealed optional field) is an
@@ -336,18 +339,22 @@ apart — across a plate, a roto pass and a comp:
 a pipe.** The child's own `schema` widget is set to match it, the widget set
 is rebuilt to that schema's fields, and the schema row itself is drawn
 locked — the same as a field the schema marks `overridable: false`.
-Overriding the schema itself is not supported.
+Overriding the schema itself is not supported. When two kinds of output share
+their fields — an image sequence and a movie of the same shot — give one
+schema several [outputs](#outputs--one-schema-several-variants) instead; a
+child then overrides only `output`.
 
 ### Row states
 
-Only while `naming_pipe` is connected, every field row is in one of three
+Only while `naming_pipe` is connected, every field row is in one of four
 states:
 
 | State | Canvas renderer | Vue nodes renderer | Meaning |
 |---|---|---|---|
 | inherited | switch off (grey), row dimmed | `○ name` | value comes from the upstream node and follows it live |
+| from output | switch off (grey), blue outline | `◆ name` in blue | this node chose its own [output](#outputs--one-schema-several-variants), which sets this field; it can still be overridden |
 | overridden | switch on (orange), orange outline, `↺` after the label | `● name` in orange, `↺` after it | this node's own value is used instead of the upstream one |
-| locked | `⛓` in place of the switch | `⛓ name` | `overridable: false` in the schema, or the `schema` row itself — always inherited, no switch |
+| locked | `⛓` in place of the switch, value dimmed | `⛓ name` | `overridable: false` in the schema or the chosen output, or the `schema` row itself — no switch |
 
 Without a pipe connected, rows carry no switch or glyph and behave exactly as
 before. Multiline fields (`template_override`, `custom_tokens`) show the glyph
@@ -414,7 +421,8 @@ An override is refused for one of three reasons:
 - the named field does not exist on the pipe's schema — "schema '&lt;key&gt;'
   has no field '&lt;name&gt;'";
 - the field is locked (`overridable: false`, or invisible via
-  `visible: false`) — "'&lt;name&gt;' is locked by schema '&lt;key&gt;'";
+  `visible: false`) — "'&lt;name&gt;' is locked by schema '&lt;key&gt;'", or
+  "… is locked by output '&lt;output&gt;'" when the chosen output locks it;
 - the field belongs to a different schema than the one this node currently
   shows, so this node has nothing of its own to apply — "this node has no
   value for '&lt;name&gt;'".
@@ -700,6 +708,118 @@ episode=101
 artist=vp
 ```
 
+## Outputs — one schema, several variants
+
+Some deliverables share every field and differ only in where and how they are
+written: an image sequence and a movie of the same shot use the same show,
+sequence, shot and version, but the sequence gets its own folder and a frame
+number, and the movie is an `.mp4`. Instead of two schemas that have to be
+kept in sync, one schema declares both as `outputs`.
+
+![A main node on the image sequence, a child that chooses the movie output](images/outputs-chain.png)
+
+*The main node (left) renders the image sequence. The child inherits show,
+sequence, shot and version and overrides only `output` → `movie`. The movie
+output sets `name` to `vidgen` (blue: from the output), locks `ext` to `mp4`
+(⛓) and hides `frame`. The two breakouts give `sh0050_vidgen_v003.mp4` and
+`sh0050_imggen_v003.1001.exr`.*
+
+### Declaring outputs
+
+```json
+{
+  "label": "Shots",
+  "tokens": { "show": {...}, "seq": {...}, "shot": {...}, "name": {...},
+              "version": {...}, "frame": {...}, "ext": {...} },
+  "folders": ["{show}", "shots", "{seq}", "{shot}", "out", "{name}", "{version}"],
+  "file": "{shot}_{name}_{version}",
+  "filename": "{basename}.{frame}.{ext}",
+  "outputs": {
+    "images": {
+      "label": "Image sequence",
+      "folders": ["{show}", "shots", "{seq}", "{shot}", "out", "{name}",
+                  "{version}", "{shot}_{name}_{version}"],
+      "tokens": { "name": {"default": "imggen"}, "ext": {"default": "exr"} }
+    },
+    "movie": {
+      "label": "Movie",
+      "filename": "{basename}.{ext}",
+      "tokens": {
+        "name":  {"default": "vidgen"},
+        "ext":   {"default": "mp4", "overridable": false},
+        "frame": {"visible": false}
+      }
+    }
+  }
+}
+```
+
+- **Templates.** An output may give `folders`, `file`, `filename`, `shot_id`
+  and `root`. Whatever it leaves out comes from the schema itself.
+- **Fields.** Under `tokens`, an output sets `default`, `visible` and/or
+  `overridable` for any token, with the same meaning as on the token itself.
+  It cannot add or remove tokens, so every output has the same fields — and
+  the pipe, overrides and the breakout's `fields` work the same for all of
+  them.
+- **The first output is the default.** A schema without `outputs` behaves
+  exactly as before: no `output` field, no change to anything else.
+- `label` is shown in the `report` (`Output : Movie (movie)`) and in the
+  `output` field's tooltip.
+
+### Picking an output
+
+On a node without a pipe, `output` is a dropdown directly under `Schema`.
+**Choosing an output sets every field it gives a `default`.** Switching from
+`images` to `movie` and back therefore restores `imggen` and `exr` rather
+than whatever was typed before — a clean reset, nothing is remembered per
+output. Fields the output hides disappear from the node; fields it locks stay
+editable here, since locking only concerns nodes further down a chain.
+
+![The main node switched to the movie output](images/outputs-main-movie.png)
+
+*The same main node on `movie`: `name` and `ext` jumped to `vidgen` and `mp4`,
+and `frame` is gone.*
+
+### Outputs in a chain
+
+A child inherits the output like any other field. To switch, it overrides
+`output` — it then **chooses** that output, and a field gets its value from,
+highest first:
+
+1. the child's own override, unless the chosen output locks or hides the
+   field;
+2. the chosen output's `default` for that field;
+3. the value inherited through the pipe;
+4. the schema's starting value.
+
+A child that does not override `output` inherits it, and with it every value
+upstream set — including the ones an upstream output set. Choosing the same
+output as upstream still counts as choosing it: its defaults apply.
+
+| Output setting | Node without a pipe | Child that chooses this output | Child that inherits it |
+|---|---|---|---|
+| `default` only | value set when picked, editable | from output, can be overridden | inherited, can be overridden |
+| `overridable: false` | editable | the output's value, locked | inherited, locked |
+| `visible: false` | hidden, the output's value | hidden, the output's value | hidden, the output's value |
+
+![A child that chooses the movie output and overrides name](images/outputs-child-override.png)
+
+*The child chooses `movie` and overrides `name` with `upscale` (orange): its
+own value beats the output's `vidgen`. `ext` stays locked to `mp4`.*
+
+When a child switches to a different output, it drops its overrides of the
+fields that output takes charge of, so they show the new output's values.
+
+`load_schema` refuses a schema whose `outputs`:
+
+- is not a non-empty dict of dicts, or an output has an unknown key;
+- names an unknown token, or a token key other than `default`, `visible`,
+  `overridable`;
+- shows a token the schema hides, or touches a revealed token or the counter;
+- gives a dropdown without `(custom)` a `default` that is not one of its
+  presets;
+- sits next to a token named `output`.
+
 ## Absolute paths and the mount point
 
 Everything above is relative to ComfyUI's `output/` folder, because that is all
@@ -957,8 +1077,8 @@ it. `tests/golden_v1.json` holds the output of the pre-2.0 node across the four
 schemas that predate it, and the suite asserts that the rewrite still produces
 it byte for byte. `tests/test_flags.py` covers the `visible`/`overridable`
 schema flags and `tests/test_pipe.py` covers the naming pipe, inheritance,
-overrides and the breakout node — both run as part of the same
-`unittest discover`.
+overrides and the breakout node, and `tests/test_outputs.py` covers schema
+outputs — all run as part of the same `unittest discover`.
 
 ## Credits
 
